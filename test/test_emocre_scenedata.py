@@ -3,8 +3,8 @@ import tempfile
 from kkloader.EmocreSceneData import EmocreSceneData
 
 
-def test_load_emocre_scene():
-    scene = EmocreSceneData.load("./data/ec_scene.png")
+def test_load_emocre_scene(data_dir):
+    scene = EmocreSceneData.load(data_dir / "ec_scene.png")
     assert scene.header == "【EroMakeHScene】"
     assert scene.product_no == 200
     assert len(scene.charas) > 0
@@ -14,10 +14,10 @@ def test_load_emocre_scene():
     assert len(scene.node_graph.nodes) > 0
 
 
-def test_save_emocre_scene():
-    with open("./data/ec_scene.png", "rb") as f:
+def test_save_emocre_scene(data_dir):
+    with open(data_dir / "ec_scene.png", "rb") as f:
         raw_data = f.read()
-    scene = EmocreSceneData.load("./data/ec_scene.png")
+    scene = EmocreSceneData.load(data_dir / "ec_scene.png")
     tmpfile = tempfile.NamedTemporaryFile()
     scene.save(tmpfile.name)
     scene2 = EmocreSceneData.load(tmpfile.name)

@@ -1,13 +1,12 @@
-import os
 import tempfile
 
 from kkloader import KoikatuSceneData
 
 
-def test_load_simple_scene():
+def test_load_simple_scene(data_dir):
     """Test loading a simple Koikatu scene file with one item"""
     # Load the scene data
-    scene_data = KoikatuSceneData.load("./data/kk_scene_simple.png")
+    scene_data = KoikatuSceneData.load(data_dir / "kk_scene_simple.png")
 
     # Check basic properties
     assert hasattr(scene_data, "version")
@@ -32,22 +31,22 @@ def test_load_simple_scene():
     assert "panel" in obj_data
 
 
-def test_koikatu_scene_repr_fields():
-    scene_data = KoikatuSceneData.load("./data/kk_scene_simple.png")
+def test_koikatu_scene_repr_fields(data_dir):
+    scene_data = KoikatuSceneData.load(data_dir / "kk_scene_simple.png")
     repr_text = repr(scene_data)
     assert f"version={scene_data.version!r}" in repr_text
-    assert f"original_filename={os.path.abspath('./data/kk_scene_simple.png')!r}" in repr_text
+    assert f"original_filename={str((data_dir / 'kk_scene_simple.png').resolve())!r}" in repr_text
     assert f"tail={scene_data.tail!r}" in repr_text
     assert "has_mod=False" in repr_text
 
 
-def test_koikatu_scene_repr_has_mod_for_mod_scene():
-    scene_data = KoikatuSceneData.load("./data/kk_scene_mod.png")
+def test_koikatu_scene_repr_has_mod_for_mod_scene(data_dir):
+    scene_data = KoikatuSceneData.load(data_dir / "kk_scene_mod.png")
     assert "has_mod=True" in repr(scene_data)
 
 
-def test_koikatu_scene_original_filename_for_bytes_input():
-    with open("./data/kk_scene_simple.png", "rb") as f:
+def test_koikatu_scene_original_filename_for_bytes_input(data_dir):
+    with open(data_dir / "kk_scene_simple.png", "rb") as f:
         raw_data = f.read()
     scene_data = KoikatuSceneData.load(raw_data)
     assert scene_data.original_filename is None
@@ -70,9 +69,9 @@ def count_types_recursive(objects):
     return type_counts
 
 
-def test_load_kk_scene():
+def test_load_kk_scene(data_dir):
     """Test loading kk_scene.png"""
-    scene_data = KoikatuSceneData.load("./data/kk_scene.png")
+    scene_data = KoikatuSceneData.load(data_dir / "kk_scene.png")
     assert scene_data.version == "1.0.4.2"
 
     type_counts = count_types_recursive(scene_data.objects)
@@ -82,9 +81,9 @@ def test_load_kk_scene():
     assert type_counts.get(3, 0) == 19  # 19 folders
 
 
-def test_load_kk_scene_mod():
+def test_load_kk_scene_mod(data_dir):
     """Test loading kk_scene_mod.png"""
-    scene_data = KoikatuSceneData.load("./data/kk_scene_mod.png")
+    scene_data = KoikatuSceneData.load(data_dir / "kk_scene_mod.png")
     assert scene_data.version == "1.1.2.1"
 
     type_counts = count_types_recursive(scene_data.objects)
@@ -95,9 +94,9 @@ def test_load_kk_scene_mod():
     assert type_counts.get(3, 0) == 202  # 202 folders
 
 
-def test_load_kks_scene():
+def test_load_kks_scene(data_dir):
     """Test loading kks_scene.png (Koikatsu Sunshine)"""
-    scene_data = KoikatuSceneData.load("./data/kks_scene.png")
+    scene_data = KoikatuSceneData.load(data_dir / "kks_scene.png")
     assert scene_data.version == "1.1.2.1"
 
     type_counts = count_types_recursive(scene_data.objects)
@@ -105,38 +104,38 @@ def test_load_kks_scene():
     assert type_counts.get(3, 0) == 1  # 1 folder
 
 
-def test_count_object_types_koikatu_scene():
-    scene_data = KoikatuSceneData.load("./data/kk_scene.png")
+def test_count_object_types_koikatu_scene(data_dir):
+    scene_data = KoikatuSceneData.load(data_dir / "kk_scene.png")
     assert scene_data.count_object_types() == {"Folder": 19, "Item": 169, "Character": 1}
 
 
-def test_count_object_types_koikatu_mod_scene():
-    scene_data = KoikatuSceneData.load("./data/kk_scene_mod.png")
+def test_count_object_types_koikatu_mod_scene(data_dir):
+    scene_data = KoikatuSceneData.load(data_dir / "kk_scene_mod.png")
     assert scene_data.count_object_types() == {"Folder": 202, "Item": 202, "Character": 1, "Light": 1}
 
 
-def test_count_object_types_kks_scene():
-    scene_data = KoikatuSceneData.load("./data/kks_scene.png")
+def test_count_object_types_kks_scene(data_dir):
+    scene_data = KoikatuSceneData.load(data_dir / "kks_scene.png")
     assert scene_data.count_object_types() == {"Light": 1, "Folder": 1, "Item": 3, "Character": 1}
 
 
-def test_walk_filter_object_type_koikatu():
-    scene_data = KoikatuSceneData.load("./data/kk_scene.png")
+def test_walk_filter_object_type_koikatu(data_dir):
+    scene_data = KoikatuSceneData.load(data_dir / "kk_scene.png")
     chars = list(scene_data.walk(object_type=KoikatuSceneData.CHARACTER))
     assert len(chars) == scene_data.count_object_types()["Character"]
     assert all(obj["type"] == KoikatuSceneData.CHARACTER for _, obj in chars)
 
 
-def test_walk_filter_object_type_koikatu_with_depth():
-    scene_data = KoikatuSceneData.load("./data/kks_scene.png")
+def test_walk_filter_object_type_koikatu_with_depth(data_dir):
+    scene_data = KoikatuSceneData.load(data_dir / "kks_scene.png")
     lights = list(scene_data.walk(include_depth=True, object_type=KoikatuSceneData.LIGHT))
     assert len(lights) == scene_data.count_object_types()["Light"]
     assert all(obj["type"] == KoikatuSceneData.LIGHT for _, obj, _ in lights)
 
 
-def test_scene_to_dict():
+def test_scene_to_dict(data_dir):
     """Test converting a scene to a dictionary"""
-    scene_data = KoikatuSceneData.load("./data/kk_scene_simple.png")
+    scene_data = KoikatuSceneData.load(data_dir / "kk_scene_simple.png")
     scene_dict = scene_data.to_dict()
 
     # Check that the dictionary has the expected keys
@@ -175,10 +174,10 @@ def count_all_objects(objects):
     return count
 
 
-def test_save_scene():
+def test_save_scene(data_dir):
     """Test saving a Koikatu scene file"""
     # Load the scene data
-    scene_data = KoikatuSceneData.load("./data/kk_scene_simple.png")
+    scene_data = KoikatuSceneData.load(data_dir / "kk_scene_simple.png")
 
     # Save to a temporary file
     tmpfile = tempfile.NamedTemporaryFile()
@@ -232,9 +231,9 @@ def test_save_scene():
     assert abs(scene_data.aceBlend - scene_data2.aceBlend) < 1e-6
 
 
-def test_save_complex_scene():
+def test_save_complex_scene(data_dir):
     """Test saving a complex Koikatu scene file with multiple object types"""
-    scene_data = KoikatuSceneData.load("./data/kk_scene.png")
+    scene_data = KoikatuSceneData.load(data_dir / "kk_scene.png")
 
     tmpfile = tempfile.NamedTemporaryFile()
     scene_data.save(tmpfile.name)
@@ -246,9 +245,9 @@ def test_save_complex_scene():
     assert type_counts1 == type_counts2
 
 
-def test_save_kk_scene_mod():
+def test_save_kk_scene_mod(data_dir):
     """Test saving kk_scene_mod.png"""
-    scene_data = KoikatuSceneData.load("./data/kk_scene_mod.png")
+    scene_data = KoikatuSceneData.load(data_dir / "kk_scene_mod.png")
 
     tmpfile = tempfile.NamedTemporaryFile()
     scene_data.save(tmpfile.name)
@@ -260,9 +259,9 @@ def test_save_kk_scene_mod():
     assert type_counts1 == type_counts2
 
 
-def test_save_kks_scene():
+def test_save_kks_scene(data_dir):
     """Test saving kks_scene.png (Koikatsu Sunshine)"""
-    scene_data = KoikatuSceneData.load("./data/kks_scene.png")
+    scene_data = KoikatuSceneData.load(data_dir / "kks_scene.png")
 
     tmpfile = tempfile.NamedTemporaryFile()
     scene_data.save(tmpfile.name)

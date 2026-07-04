@@ -4,12 +4,11 @@ import io
 import struct
 from typing import Any
 
-import kkloader
-import kkloader.KoikatuCharaData
 from kkloader.funcs import get_png, load_length, load_type
+from kkloader.KoikatuCharaData import KoikatuCharaData
 
 
-class EmocreCharaData(kkloader.KoikatuCharaData):
+class EmocreCharaData(KoikatuCharaData):
     """Character data class for EmotionCreators.
 
     Extends KoikatuCharaData with EmotionCreators-specific header fields
@@ -27,25 +26,16 @@ class EmocreCharaData(kkloader.KoikatuCharaData):
     dataid: bytes
     packages: list[int]
 
-    def __init__(self) -> None:
-        """Initialize an EmocreCharaData instance with EmotionCreators block modules."""
-        self.modules = {
-            "Custom": kkloader.kk_Custom,
-            "Coordinate": kkloader.kk_Coordinate,
-            "Parameter": kkloader.kk_Parameter,
-            "Status": kkloader.kk_Status,
-            "About": kkloader.kk_About,
-            "KKEx": kkloader.kk_KKEx,
-        }
-
-    def _load_header(self, data: io.BytesIO, **kwargs: Any) -> None:
+    def _load_header(self, data: io.BytesIO, *, contains_image: bool = False) -> None:
         """Load EmotionCreators-specific header information.
 
         Args:
             data: BytesIO stream positioned at the start of the header.
-            **kwargs: Additional keyword arguments (unused).
+            contains_image: Whether to extract the PNG image from the stream.
         """
-        self.image = get_png(data)
+        self.image = None
+        if contains_image:
+            self.image = get_png(data)
         self.product_no = load_type(data, "i")
         self.header = load_length(data, "b")
         self.version = load_length(data, "b")
@@ -66,9 +56,11 @@ class EmocreCharaData(kkloader.KoikatuCharaData):
         ipack = struct.Struct("i")
         bpack = struct.Struct("b")
         packages = b"".join(list(map(lambda x: ipack.pack(x), self.packages)))
-        data = b"".join(
+        data_chunks: list[bytes] = []
+        if self.image:
+            data_chunks.append(self.image)
+        data_chunks.extend(
             [
-                self.image,
                 ipack.pack(self.product_no),
                 bpack.pack(len(self.header)),
                 self.header,
@@ -83,13 +75,13 @@ class EmocreCharaData(kkloader.KoikatuCharaData):
                 packages,
             ]
         )
-        return data
+        return b"".join(data_chunks)
 
-    def _make_dict_header(self, **kwargs: Any) -> dict[str, Any]:
+    def _make_dict_header(self, *, include_image: bool = False) -> dict[str, Any]:
         """Create a dictionary representation of the EmotionCreators header.
 
         Args:
-            **kwargs: Additional keyword arguments (unused).
+            include_image: Whether to include images in the output.
 
         Returns:
             Dictionary containing all header information.
@@ -104,4 +96,6 @@ class EmocreCharaData(kkloader.KoikatuCharaData):
             "language": self.language,
             "packages": self.packages,
         }
+        if include_image and self.image:
+            data["image"] = self.image
         return data

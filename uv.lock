@@ -6,6 +6,10 @@ resolution-markers = [
     "python_full_version < '3.12'",
 ]
 
+[options]
+exclude-newer = "2026-07-03T09:57:03.184398Z"
+exclude-newer-span = "P1D"
+
 [[package]]
 name = "cffi"
 version = "2.0.0"
@@ -160,11 +164,16 @@ dependencies = [
     { name = "cryptography" },
     { name = "lz4" },
     { name = "msgpack" },
+]
+
+[package.optional-dependencies]
+pandas = [
     { name = "pandas" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "pandas" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -174,11 +183,13 @@ requires-dist = [
     { name = "cryptography", specifier = ">=46.0.3,<47" },
     { name = "lz4", specifier = ">=4.4.4,<5" },
     { name = "msgpack", specifier = ">=1.0.3,<2" },
-    { name = "pandas", specifier = ">=2.2.2,<3" },
+    { name = "pandas", marker = "extra == 'pandas'", specifier = ">=2.2.2,<3" },
 ]
+provides-extras = ["pandas"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "pandas", specifier = ">=2.2.2,<3" },
     { name = "pytest", specifier = ">=7.1.1" },
     { name = "ruff", specifier = ">=0.6.3" },
 ]

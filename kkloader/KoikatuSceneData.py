@@ -6,15 +6,96 @@ Scene files are PNG images with binary scene data appended after the PNG IEND ch
 
 import io
 import json
-import os
 import struct
 from typing import Any, Self
 
-from kkloader.funcs import get_png, load_length, load_string, load_type, msg_pack, msg_unpack, write_string
+from kkloader.funcs import compare_versions, get_png, load_length, load_string, load_type, msg_pack, msg_unpack, to_stream, write_string
 from kkloader.KoikatuSceneObjectLoader import KoikatuSceneObjectLoader
 
 
-class KoikatuSceneData:
+class SceneWalkMixin:
+    """Mixin providing walk() and count_object_types() for scene data classes.
+
+    Requires the class to have:
+    - objects: dict[int, dict[str, Any]]
+    - OBJECT_TYPE_NAMES: dict[int, str]
+    - CHARACTER class constant (int)
+    """
+
+    CHARACTER = 0
+    ITEM = 1
+    LIGHT = 2
+    FOLDER = 3
+    ROUTE = 4
+    CAMERA = 5
+
+    OBJECT_TYPE_NAMES: dict[int, str] = {
+        0: "Character",
+        1: "Item",
+        2: "Light",
+        3: "Folder",
+        4: "Route",
+        5: "Camera",
+    }
+
+    objects: dict[int, dict[str, Any]]
+
+    def walk(self, include_depth: bool = False, object_type: int | None = None):
+        """Recursively iterate over all objects in the scene."""
+
+        def _should_yield(obj_info: dict[str, Any]) -> bool:
+            if object_type is None:
+                return True
+            return obj_info.get("type") == object_type
+
+        def _walk_children(obj_info, depth):
+            data = obj_info.get("data", {})
+            child = data.get("child")
+
+            if child is None:
+                return
+
+            obj_type = obj_info.get("type")
+
+            if obj_type == self.CHARACTER:
+                for child_key, child_list in child.items():
+                    for idx, child_obj in enumerate(child_list):
+                        if _should_yield(child_obj):
+                            if include_depth:
+                                yield (child_key, idx), child_obj, depth + 1
+                            else:
+                                yield (child_key, idx), child_obj
+                        yield from _walk_children(child_obj, depth + 1)
+            else:
+                for idx, child_obj in enumerate(child):
+                    if _should_yield(child_obj):
+                        if include_depth:
+                            yield idx, child_obj, depth + 1
+                        else:
+                            yield idx, child_obj
+                    yield from _walk_children(child_obj, depth + 1)
+
+        for key, obj_info in self.objects.items():
+            if _should_yield(obj_info):
+                if include_depth:
+                    yield key, obj_info, 0
+                else:
+                    yield key, obj_info
+            yield from _walk_children(obj_info, 0)
+
+    def count_object_types(self) -> dict[str, int]:
+        """Count scene objects by type name across the full object tree."""
+        counts: dict[str, int] = {}
+        for _, obj_info in self.walk():
+            obj_type = obj_info.get("type")
+            if not isinstance(obj_type, int):
+                continue
+            name = self.OBJECT_TYPE_NAMES.get(obj_type, f"Unknown({obj_type})")
+            counts[name] = counts.get(name, 0) + 1
+        return counts
+
+
+class KoikatuSceneData(SceneWalkMixin):
     """Class for loading and parsing Koikatu scene data.
 
     This is a Python implementation of the Studio.SceneInfo.Load function in C#.
@@ -32,12 +113,6 @@ class KoikatuSceneData:
         And many more scene settings...
     """
 
-    CHARACTER = 0
-    ITEM = 1
-    LIGHT = 2
-    FOLDER = 3
-    ROUTE = 4
-    CAMERA = 5
     TEXT = 7
 
     def __init__(self) -> None:
@@ -105,12 +180,7 @@ class KoikatuSceneData:
         self.original_filename: str | None = None
 
     OBJECT_TYPE_NAMES: dict[int, str] = {
-        CHARACTER: "Character",
-        ITEM: "Item",
-        LIGHT: "Light",
-        FOLDER: "Folder",
-        ROUTE: "Route",
-        CAMERA: "Camera",
+        **SceneWalkMixin.OBJECT_TYPE_NAMES,
         TEXT: "Text",
     }
 
@@ -126,19 +196,7 @@ class KoikatuSceneData:
             KoikatuSceneData: The loaded scene data
         """
         ks = cls()
-        ks.original_filename = None
-
-        if isinstance(filelike, str):
-            with open(filelike, "br") as f:
-                data = f.read()
-            data_stream = io.BytesIO(data)
-            ks.original_filename = os.path.abspath(filelike)
-        elif isinstance(filelike, bytes):
-            data_stream = io.BytesIO(filelike)
-        elif isinstance(filelike, io.BytesIO):
-            data_stream = filelike
-        else:
-            raise ValueError(f"Unsupported input type: {type(filelike)}")
+        data_stream, ks.original_filename = to_stream(filelike)
 
         ks.image = get_png(data_stream)
         version_str = load_string(data_stream).decode("utf-8")
@@ -483,98 +541,6 @@ class KoikatuSceneData:
                 data_stream.write(self.mod_tail)
 
         return data_stream.getvalue()
-
-    def walk(self, include_depth: bool = False, object_type: int | None = None):
-        """
-        Recursively iterate over all objects in the scene, including nested child objects.
-
-        This method traverses the entire object hierarchy, yielding each object
-        in depth-first order. It handles the different child structures for
-        different object types:
-        - Character (type 0): child is Dict[int, List[ObjectInfo]]
-        - Item (type 1), Folder (type 3), Route (type 4): child is List[ObjectInfo]
-        - Light (type 2), Camera (type 5), Text (type 7): no children
-
-        Args:
-            include_depth: If True, yields (key, obj_info, depth) tuples.
-                          If False, yields (key, obj_info) tuples.
-            object_type: Optional object type filter. If provided, only objects
-                         with matching type are yielded.
-
-        Yields:
-            If include_depth is False:
-                tuple: (key, obj_info) where key is the object's key/index
-                       and obj_info is the object dictionary with 'type' and 'data'.
-            If include_depth is True:
-                tuple: (key, obj_info, depth) where depth indicates nesting level
-                       (0 for top-level objects).
-
-        Example:
-            >>> scene = KoikatuSceneData.load("scene.png")
-            >>> for key, obj in scene.walk():
-            ...     print(f"Object {key}: type={obj['type']}")
-            >>> # With depth:
-            >>> for key, obj, depth in scene.walk(include_depth=True):
-            ...     print(f"{'  ' * depth}Object {key}: type={obj['type']}")
-            >>> # Filter by type (characters):
-            >>> for key, obj in scene.walk(object_type=KoikatuSceneData.CHARACTER):
-            ...     print(f"Character key={key}")
-        """
-
-        def _should_yield(obj_info: dict[str, Any]) -> bool:
-            if object_type is None:
-                return True
-            return obj_info.get("type") == object_type
-
-        def _walk_children(obj_info, depth):
-            """Recursively walk through child objects."""
-            data = obj_info.get("data", {})
-            child = data.get("child")
-
-            if child is None:
-                return
-
-            obj_type = obj_info.get("type")
-
-            # Character type (0) has Dict[int, List[ObjectInfo]] structure
-            if obj_type == 0:
-                for child_key, child_list in child.items():
-                    for idx, child_obj in enumerate(child_list):
-                        if _should_yield(child_obj):
-                            if include_depth:
-                                yield (child_key, idx), child_obj, depth + 1
-                            else:
-                                yield (child_key, idx), child_obj
-                        yield from _walk_children(child_obj, depth + 1)
-            else:
-                # Item (1), Folder (3), Route (4) have List[ObjectInfo] structure
-                for idx, child_obj in enumerate(child):
-                    if _should_yield(child_obj):
-                        if include_depth:
-                            yield idx, child_obj, depth + 1
-                        else:
-                            yield idx, child_obj
-                    yield from _walk_children(child_obj, depth + 1)
-
-        # Iterate over top-level objects
-        for key, obj_info in self.objects.items():
-            if _should_yield(obj_info):
-                if include_depth:
-                    yield key, obj_info, 0
-                else:
-                    yield key, obj_info
-            yield from _walk_children(obj_info, 0)
-
-    def count_object_types(self) -> dict[str, int]:
-        """Count scene objects by type name across the full object tree."""
-        counts: dict[str, int] = {}
-        for _, obj_info in self.walk():
-            obj_type = obj_info.get("type")
-            if not isinstance(obj_type, int):
-                continue
-            name = self.OBJECT_TYPE_NAMES.get(obj_type, f"Unknown({obj_type})")
-            counts[name] = counts.get(name, 0) + 1
-        return counts
 
     def to_dict(self):
         """Convert the scene data to a dictionary"""
@@ -924,5 +890,7 @@ class KoikatuSceneData:
 
     @staticmethod
     def _compare_versions(version1, version2):
-        """Delegate to KoikatuSceneObjectLoader for consistency"""
-        return KoikatuSceneObjectLoader._compare_versions(version1, version2)
+        """Compare version strings numerically. Returns -1/0/1."""
+        if version1 is None:
+            return 1
+        return compare_versions(version1, version2)
