@@ -20,10 +20,12 @@ from .HoneycomeSceneData import HoneycomeSceneData  # noqa
 from .SummerVacationCharaData import SummerVacationCharaData  # noqa
 from .SummerVacationSaveData import SummerVacationSaveData  # noqa
 from .AicomiCharaData import AicomiCharaData  # noqa
+from .AicomiSaveData import AicomiSaveData  # noqa
 from .AmanatsuCharaData import AmanatsuCharaData  # noqa
 
 __all__: list[str] = [
     "AicomiCharaData",
+    "AicomiSaveData",
     "AmanatsuCharaData",
     "EmocreCharaData",
     "EmocreMapData",
