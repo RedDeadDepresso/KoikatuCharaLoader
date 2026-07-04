@@ -15,8 +15,6 @@ jobs:
     - uses: astral-sh/setup-uv@v5
       with:
         python-version: "3.11"
-    - name: Install dependencies
-      run: uv sync
     - name: Build
       run: uv build
     - name: Publish
