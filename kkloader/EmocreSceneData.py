@@ -8,38 +8,24 @@ round-trip without losing data while those subformats are implemented.
 """
 
 import io
-import os
 import struct
 from typing import Any, Self
 
 from kkloader.EmocreCharaData import EmocreCharaData
 from kkloader.EmocreMapData import EmocreMapData
-from kkloader.funcs import get_png, load_string, load_type, write_string
-
-
-def _version_tuple(version: str) -> tuple[int, ...]:
-    return tuple(int(part) for part in version.split("."))
+from kkloader.funcs import compare_versions, get_png, load_string, load_type, to_stream, write_string
 
 
 def _version_ge(version: str, other: str) -> bool:
-    left = _version_tuple(version)
-    right = _version_tuple(other)
-    size = max(len(left), len(right))
-    return left + (0,) * (size - len(left)) >= right + (0,) * (size - len(right))
+    return compare_versions(version, other) >= 0
 
 
 def _version_gt(version: str, other: str) -> bool:
-    left = _version_tuple(version)
-    right = _version_tuple(other)
-    size = max(len(left), len(right))
-    return left + (0,) * (size - len(left)) > right + (0,) * (size - len(right))
+    return compare_versions(version, other) > 0
 
 
 def _version_le(version: str, other: str) -> bool:
-    left = _version_tuple(version)
-    right = _version_tuple(other)
-    size = max(len(left), len(right))
-    return left + (0,) * (size - len(left)) <= right + (0,) * (size - len(right))
+    return compare_versions(version, other) <= 0
 
 
 def _value_payload(value: Any) -> Any:
@@ -659,18 +645,7 @@ class EmocreSceneData(ValueComparable):
     def load(cls, filelike: str | bytes | io.BytesIO) -> Self:
         """Load EmotionCreators scene data from a path, bytes, or stream."""
         scene = cls()
-
-        if isinstance(filelike, str):
-            with open(filelike, "br") as f:
-                data = f.read()
-            data_stream = io.BytesIO(data)
-            scene.original_filename = os.path.abspath(filelike)
-        elif isinstance(filelike, bytes):
-            data_stream = io.BytesIO(filelike)
-        elif isinstance(filelike, io.BytesIO):
-            data_stream = filelike
-        else:
-            raise ValueError(f"Unsupported input type: {type(filelike)}")
+        data_stream, scene.original_filename = to_stream(filelike)
 
         scene.image = get_png(data_stream)
         scene.product_no = load_type(data_stream, "i")

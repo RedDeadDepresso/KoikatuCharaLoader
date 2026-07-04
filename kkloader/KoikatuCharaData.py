@@ -3,11 +3,10 @@ import copy
 import hashlib
 import io
 import json
-import os
 import struct
 from typing import Any, ClassVar, Self
 
-from kkloader.funcs import get_png, load_length, load_type, msg_pack, msg_pack_kkex, msg_unpack
+from kkloader.funcs import get_png, load_length, load_type, msg_pack, msg_pack_kkex, msg_unpack, read_lstinfo_blocks, to_stream, write_lstinfo_blocks
 
 import lz4.block
 import msgpack
@@ -78,7 +77,6 @@ class KoikatuCharaData:
         serialized_lstinfo_order: Order of blocks as stored in the payload.
     """
 
-    modules: dict[str, type["BlockData"]]
     image: bytes | None
     product_no: int
     header: bytes
@@ -91,15 +89,8 @@ class KoikatuCharaData:
     serialized_lstinfo_order: list[str]
 
     def __init__(self) -> None:
-        """Initialize a new KoikatuCharaData instance with default block modules."""
-        self.modules = {
-            "Custom": Custom,
-            "Coordinate": Coordinate,
-            "Parameter": Parameter,
-            "Status": Status,
-            "About": About,
-            "KKEx": KKEx,
-        }
+        self.modules = dict(self.MODULES)
+        self.original_file_path = None
 
     @classmethod
     def load(cls, filelike: str | bytes | io.BytesIO, contains_png: bool = True) -> Self:
@@ -116,22 +107,7 @@ class KoikatuCharaData:
             ValueError: If the input type is not supported.
         """
         kc = cls()
-        kc.original_file_path = None
-
-        if isinstance(filelike, str):
-            with open(filelike, "br") as f:
-                data = f.read()
-            data_stream = io.BytesIO(data)
-            kc.original_file_path = os.path.abspath(filelike)
-
-        elif isinstance(filelike, bytes):
-            data_stream = io.BytesIO(filelike)
-
-        elif isinstance(filelike, io.BytesIO):
-            data_stream = filelike
-
-        else:
-            raise ValueError("unsupported input. type:{}".format(type(filelike)))
+        data_stream, kc.original_file_path = to_stream(filelike)
 
         kc._load_header(data_stream, contains_image=contains_png)
         kc._load_blockdata(data_stream)
@@ -160,24 +136,19 @@ class KoikatuCharaData:
         Args:
             data: BytesIO stream positioned at the start of block data.
         """
-        lstinfo_index = msg_unpack(load_length(data, "i"))
-        lstinfo_raw = load_length(data, "q")
+        raw_payload, entries, self.original_lstinfo_order, self.serialized_lstinfo_order = read_lstinfo_blocks(data)
 
         self.unknown_blockdata = []
         self.blockdata = []
-        self.original_lstinfo_order = list(map(lambda x: x["name"], lstinfo_index["lstInfo"]))
-        self.serialized_lstinfo_order = list(map(lambda x: x["name"], sorted(lstinfo_index["lstInfo"], key=lambda x: x["pos"])))
 
-        for i in lstinfo_index["lstInfo"]:
-            name = i["name"]
-            pos = i["pos"]
-            size = i["size"]
-            version = i["version"]
-            block_data = lstinfo_raw[pos : pos + size]
+        for entry in entries:
+            name = entry["name"]
+            block_data = raw_payload[entry["pos"] : entry["pos"] + entry["size"]]
+            version = entry["version"]
 
             self.blockdata.append(name)
-            if name in self.modules.keys():
-                setattr(self, name, self.modules[name](block_data, version))
+            if name in self.modules:
+                setattr(self, name, self.modules[name](data=block_data, version=version))
             else:
                 setattr(self, name, UnknownBlockData(name, block_data, version))
                 self.unknown_blockdata.append(name)
@@ -222,29 +193,7 @@ class KoikatuCharaData:
         Returns:
             Binary block data including lstInfo index and serialized blocks.
         """
-        cumsum = 0
-        chara_values: list[bytes] = []
-        lstinfos: list[dict[str, Any]] = []
-        for v in self.serialized_lstinfo_order:
-            data, name, version = getattr(self, v).serialize()
-            lstinfos.append({"name": name, "version": version, "pos": cumsum, "size": len(data)})
-            chara_values.append(data)
-            cumsum += len(data)
-        chara_values_bytes = b"".join(chara_values)
-
-        lstinfos_dict = {item["name"]: item for item in lstinfos}
-        lstinfos = [lstinfos_dict[k] for k in self.original_lstinfo_order]
-
-        blockdata_s, blockdata_l = msg_pack({"lstInfo": lstinfos})
-        ipack = struct.Struct("i")
-
-        data_chunks = [
-            ipack.pack(blockdata_l),
-            blockdata_s,
-            struct.pack("q", len(chara_values_bytes)),
-            chara_values_bytes,
-        ]
-        return b"".join(data_chunks)
+        return write_lstinfo_blocks(self, self.serialized_lstinfo_order, self.original_lstinfo_order)
 
     def save(self, filename: str) -> None:
         """Save the character data to a file.
@@ -871,3 +820,13 @@ class UnknownBlockData(BlockData):
     def prettify(self) -> None:
         """Print the raw data."""
         print(self.data)
+
+
+KoikatuCharaData.MODULES = {
+    "Custom": Custom,
+    "Coordinate": Coordinate,
+    "Parameter": Parameter,
+    "Status": Status,
+    "About": About,
+    "KKEx": KKEx,
+}

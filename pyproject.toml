@@ -9,10 +9,12 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "msgpack>=1.0.3,<2",
-    "pandas>=2.2.2,<3",
     "lz4>=4.4.4,<5",
     "cryptography>=46.0.3,<47",
 ]
+
+[project.optional-dependencies]
+pandas = ["pandas>=2.2.2,<3"]
 
 [project.urls]
 Homepage = "https://github.com/great-majority/KoikatuCharaLoader"
@@ -21,6 +23,7 @@ Homepage = "https://github.com/great-majority/KoikatuCharaLoader"
 dev = [
     "ruff>=0.6.3",
     "pytest>=7.1.1",
+    "pandas>=2.2.2,<3",
 ]
 
 [build-system]
@@ -30,6 +33,9 @@ build-backend = "hatchling.build"
 [tool.hatch.version]
 source = "vcs"
 pattern = "(?P<version>\\d+(\\.\\d+)*)"
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
 
 [tool.ruff]
 line-length = 255

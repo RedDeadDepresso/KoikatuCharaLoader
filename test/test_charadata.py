@@ -1,7 +1,6 @@
 import json
 import os
 import re
-import tempfile
 from pathlib import Path
 
 from kkloader import (
@@ -12,30 +11,34 @@ from kkloader import (
     KoikatuCharaData,
     SummerVacationCharaData,
 )
+from kkloader.AmanatsuCharaData import CoordinateEntry
+from kkloader.KoikatuCharaHeader import KoikatuCharaHeader
 
 import pytest
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 _IMAGE_SUMMARY_RE = re.compile(r"^\[(PNG|JPEG) image, [\d,]+ bytes, md5:[0-9a-f]{32}\]$")
 
 
-def test_load_character():
-    kc = KoikatuCharaData.load("./data/kk_chara.png")
+def test_load_character(data_dir):
+    kc = KoikatuCharaData.load(data_dir / "kk_chara.png")
     assert hasattr(kc, "Custom")
     assert hasattr(kc, "Coordinate")
     assert hasattr(kc, "Parameter")
     assert hasattr(kc, "Status")
-    assert kc.original_file_path == os.path.abspath("./data/kk_chara.png")
+    assert kc.original_file_path == os.path.abspath(data_dir / "kk_chara.png")
 
 
-def test_load_character_from_bytes_has_no_original_file_path():
-    with open("./data/kk_chara.png", "rb") as f:
+def test_load_character_from_bytes_has_no_original_file_path(data_dir):
+    with open(data_dir / "kk_chara.png", "rb") as f:
         raw_data = f.read()
     kc = KoikatuCharaData.load(raw_data)
     assert kc.original_file_path is None
 
 
-def test_load_sunshine_character():
-    kc = KoikatuCharaData.load("./data/kks_chara.png")
+def test_load_sunshine_character(data_dir):
+    kc = KoikatuCharaData.load(data_dir / "kks_chara.png")
     assert hasattr(kc, "Custom")
     assert hasattr(kc, "Coordinate")
     assert hasattr(kc, "Parameter")
@@ -43,16 +46,16 @@ def test_load_sunshine_character():
     assert hasattr(kc, "About")
 
 
-def test_load_emocre_character():
-    ec = EmocreCharaData.load("./data/ec_chara.png")
+def test_load_emocre_character(data_dir):
+    ec = EmocreCharaData.load(data_dir / "ec_chara.png")
     assert hasattr(ec, "Custom")
     assert hasattr(ec, "Coordinate")
     assert hasattr(ec, "Parameter")
     assert hasattr(ec, "Status")
 
 
-def test_load_mod_character():
-    kc = KoikatuCharaData.load("./data/kk_mod_chara.png")
+def test_load_mod_character(data_dir):
+    kc = KoikatuCharaData.load(data_dir / "kk_mod_chara.png")
     assert hasattr(kc, "Custom")
     assert hasattr(kc, "Coordinate")
     assert hasattr(kc, "Parameter")
@@ -60,69 +63,52 @@ def test_load_mod_character():
     assert hasattr(kc, "KKEx")
 
 
-def test_load_honeycome_party_character():
-    hc = HoneycomeCharaData.load("./data/hcp_chara.png")
-    for b in hc.blockdata:
-        assert b in hc.modules.keys()
+@pytest.mark.parametrize(
+    "loader, filename",
+    [
+        (HoneycomeCharaData, "hcp_chara.png"),
+        (HoneycomeCharaData, "hc_chara.png"),
+        (SummerVacationCharaData, "sv_chara.png"),
+        (AicomiCharaData, "ac_chara.png"),
+        (AmanatsuCharaData, "al_chara.png"),
+    ],
+    ids=["hcp", "hc", "sv", "ac", "al"],
+)
+def test_load_blocks_in_modules(loader, filename, data_dir):
+    chara = loader.load(data_dir / filename)
+    for b in chara.blockdata:
+        assert b in chara.modules.keys()
 
 
-def test_load_honeycome_character():
-    hc = HoneycomeCharaData.load("./data/hc_chara.png")
-    for b in hc.blockdata:
-        assert b in hc.modules.keys()
+SAVE_CASES = [
+    (KoikatuCharaData, "kk_chara.png", ["nickname"]),
+    (KoikatuCharaData, "kks_chara.png", ["nickname"]),
+    (KoikatuCharaData, "kk_mod_chara.png", ["nickname"]),
+    (EmocreCharaData, "ec_chara.png", ["fullname"]),
+    (HoneycomeCharaData, "hcp_chara.png", ["lastname", "firstname"]),
+    (HoneycomeCharaData, "hc_chara.png", ["lastname", "firstname"]),
+    (SummerVacationCharaData, "sv_chara.png", ["lastname", "firstname"]),
+    (AicomiCharaData, "ac_chara.png", ["lastname", "firstname"]),
+    (AmanatsuCharaData, "al_chara.png", ["lastname", "firstname"]),
+]
 
 
-def test_load_summervacation_character():
-    svc = SummerVacationCharaData.load("./data/sv_chara.png")
-    for b in svc.blockdata:
-        assert b in svc.modules.keys()
-
-
-def test_load_aicomi_character():
-    ac = AicomiCharaData.load("./data/ac_chara.png")
-    for b in ac.blockdata:
-        assert b in ac.modules.keys()
-
-
-def test_save_character():
-    with open("./data/kk_chara.png", "rb") as f:
+@pytest.mark.parametrize("loader, filename, name_fields", SAVE_CASES, ids=[c[1] for c in SAVE_CASES])
+def test_save_roundtrip(loader, filename, name_fields, data_dir, tmp_path):
+    with open(data_dir / filename, "rb") as f:
         raw_data = f.read()
-    tmpfile = tempfile.NamedTemporaryFile()
-    kc = KoikatuCharaData.load("./data/kk_chara.png")
-    kc.save(tmpfile.name)
-    kc2 = KoikatuCharaData.load(tmpfile.name)
-    assert kc["Parameter"]["nickname"] == kc2["Parameter"]["nickname"]
-    assert raw_data == bytes(kc)
-    assert bytes(kc) == bytes(kc2)
+    chara1 = loader.load(data_dir / filename)
+    out_path = tmp_path / filename
+    chara1.save(str(out_path))
+    chara2 = loader.load(str(out_path))
+    for field in name_fields:
+        assert chara1["Parameter"][field] == chara2["Parameter"][field]
+    assert raw_data == bytes(chara1)
+    assert bytes(chara1) == bytes(chara2)
 
 
-def test_save_sunshine_character():
-    with open("./data/kks_chara.png", "rb") as f:
-        raw_data = f.read()
-    tmpfile = tempfile.NamedTemporaryFile()
-    kc = KoikatuCharaData.load("./data/kks_chara.png")
-    kc.save(tmpfile.name)
-    kc2 = KoikatuCharaData.load(tmpfile.name)
-    assert kc["Parameter"]["nickname"] == kc2["Parameter"]["nickname"]
-    assert raw_data == bytes(kc)
-    assert bytes(kc) == bytes(kc2)
-
-
-def test_save_modding_character():
-    with open("./data/kk_mod_chara.png", "rb") as f:
-        raw_data = f.read()
-    tmpfile = tempfile.NamedTemporaryFile()
-    kc = KoikatuCharaData.load("./data/kk_mod_chara.png")
-    kc.save(tmpfile.name)
-    kc2 = KoikatuCharaData.load(tmpfile.name)
-    assert kc["Parameter"]["nickname"] == kc2["Parameter"]["nickname"]
-    assert bytes(kc) == bytes(kc2)
-    assert raw_data == bytes(kc)
-    assert raw_data == bytes(kc2)
-
-
-@pytest.mark.parametrize("chara_path", [str(p) for p in Path("./data/testing-data").glob("*.png")])
-def test_save_modding_character_param(chara_path, request):
+@pytest.mark.parametrize("chara_path", [str(p) for p in (DATA_DIR / "testing-data").glob("*.png")])
+def test_save_modding_character_param(chara_path, request, tmp_path):
     if not request.config.getoption("--run-optional"):
         pytest.skip("requires `--run-optional` to run")
 
@@ -131,126 +117,34 @@ def test_save_modding_character_param(chara_path, request):
     with open(chara_path, "rb") as f:
         raw_data = f.read()
 
-    tmpfile = tempfile.NamedTemporaryFile(delete=False)
-    try:
-        kc = KoikatuCharaData.load(chara_path)
-        kc.save(tmpfile.name)
-        kc2 = KoikatuCharaData.load(tmpfile.name)
+    out_path = tmp_path / Path(chara_path).name
+    kc = KoikatuCharaData.load(chara_path)
+    kc.save(str(out_path))
+    kc2 = KoikatuCharaData.load(str(out_path))
 
-        assert kc["Parameter"]["nickname"] == kc2["Parameter"]["nickname"]
-        assert bytes(kc) == bytes(kc2)
-        assert raw_data == bytes(kc)
-        assert raw_data == bytes(kc2)
-
-    finally:
-        tmpfile.close()
-        os.unlink(tmpfile.name)
+    assert kc["Parameter"]["nickname"] == kc2["Parameter"]["nickname"]
+    assert bytes(kc) == bytes(kc2)
+    assert raw_data == bytes(kc)
+    assert raw_data == bytes(kc2)
 
 
-def test_save_emocre_character():
-    with open("./data/ec_chara.png", "rb") as f:
-        raw_data = f.read()
-    tmpfile = tempfile.NamedTemporaryFile()
-    ec = EmocreCharaData.load("./data/ec_chara.png")
-    ec.save(tmpfile.name)
-    ec2 = EmocreCharaData.load(tmpfile.name)
-    assert ec["Parameter"]["fullname"] == ec2["Parameter"]["fullname"]
-    assert raw_data == bytes(ec)
-    assert bytes(ec) == bytes(ec2)
+JSON_CASES = [
+    (KoikatuCharaData, "kk_chara.png"),
+    (KoikatuCharaData, "kks_chara.png"),
+    (EmocreCharaData, "ec_chara.png"),
+    (HoneycomeCharaData, "hcp_chara.png"),
+    (HoneycomeCharaData, "hc_chara.png"),
+    (SummerVacationCharaData, "sv_chara.png"),
+    (AicomiCharaData, "ac_chara.png"),
+    (AmanatsuCharaData, "al_chara.png"),
+]
 
 
-def test_save_honeycome_party_character():
-    with open("./data/hcp_chara.png", "rb") as f:
-        raw_data = f.read()
-    tmpfile = tempfile.NamedTemporaryFile()
-    hc = HoneycomeCharaData.load("./data/hcp_chara.png")
-    hc.save(tmpfile.name)
-    hc2 = HoneycomeCharaData.load(tmpfile.name)
-    assert hc["Parameter"]["lastname"] == hc2["Parameter"]["lastname"]
-    assert hc["Parameter"]["firstname"] == hc2["Parameter"]["firstname"]
-    assert raw_data == bytes(hc)
-    assert bytes(hc) == bytes(hc2)
-
-
-def test_save_honeycome_character():
-    with open("./data/hc_chara.png", "rb") as f:
-        raw_data = f.read()
-    tmpfile = tempfile.NamedTemporaryFile()
-    hc = HoneycomeCharaData.load("./data/hc_chara.png")
-    hc.save(tmpfile.name)
-    hc2 = HoneycomeCharaData.load(tmpfile.name)
-    assert hc["Parameter"]["lastname"] == hc2["Parameter"]["lastname"]
-    assert hc["Parameter"]["firstname"] == hc2["Parameter"]["firstname"]
-    assert raw_data == bytes(hc)
-    assert bytes(hc) == bytes(hc2)
-
-
-def test_save_summervacation_character():
-    with open("./data/sv_chara.png", "rb") as f:
-        raw_data = f.read()
-    tmpfile = tempfile.NamedTemporaryFile()
-    svc = SummerVacationCharaData.load("./data/sv_chara.png")
-    svc.save(tmpfile.name)
-    svc2 = SummerVacationCharaData.load(tmpfile.name)
-    assert svc["Parameter"]["lastname"] == svc2["Parameter"]["lastname"]
-    assert svc["Parameter"]["firstname"] == svc2["Parameter"]["firstname"]
-    assert raw_data == bytes(svc)
-    assert bytes(svc) == bytes(svc2)
-
-
-def test_save_aicomi_character():
-    with open("./data/ac_chara.png", "rb") as f:
-        raw_data = f.read()
-    tmpfile = tempfile.NamedTemporaryFile()
-    ac = AicomiCharaData.load("./data/ac_chara.png")
-    ac.save(tmpfile.name)
-    ac2 = AicomiCharaData.load(tmpfile.name)
-    assert ac["Parameter"]["lastname"] == ac2["Parameter"]["lastname"]
-    assert ac["Parameter"]["firstname"] == ac2["Parameter"]["firstname"]
-    assert raw_data == bytes(ac)
-    assert bytes(ac) == bytes(ac2)
-
-
-def test_json_character():
-    kc = KoikatuCharaData.load("./data/kk_chara.png")
-    tmpfile = tempfile.NamedTemporaryFile()
-    kc.save_json(tmpfile.name)
-
-
-def test_json_sunshine_character():
-    kc = KoikatuCharaData.load("./data/kks_chara.png")
-    tmpfile = tempfile.NamedTemporaryFile()
-    kc.save_json(tmpfile.name)
-
-
-def test_json_emocre_character():
-    ec = EmocreCharaData.load("./data/ec_chara.png")
-    tmpfile = tempfile.NamedTemporaryFile()
-    ec.save_json(tmpfile.name)
-
-
-def test_json_honeycome_party():
-    hc = HoneycomeCharaData.load("./data/hcp_chara.png")
-    tmpfile = tempfile.NamedTemporaryFile()
-    hc.save_json(tmpfile.name)
-
-
-def test_json_honeycome():
-    hc = HoneycomeCharaData.load("./data/hc_chara.png")
-    tmpfile = tempfile.NamedTemporaryFile()
-    hc.save_json(tmpfile.name)
-
-
-def test_json_summervacation():
-    hc = SummerVacationCharaData.load("./data/sv_chara.png")
-    tmpfile = tempfile.NamedTemporaryFile()
-    hc.save_json(tmpfile.name)
-
-
-def test_json_aicomi():
-    ac = AicomiCharaData.load("./data/ac_chara.png")
-    tmpfile = tempfile.NamedTemporaryFile()
-    ac.save_json(tmpfile.name)
+@pytest.mark.parametrize("loader, filename", JSON_CASES, ids=[c[1] for c in JSON_CASES])
+def test_save_json(loader, filename, data_dir, tmp_path):
+    chara = loader.load(data_dir / filename)
+    out_path = tmp_path / f"{filename}.json"
+    chara.save_json(str(out_path))
 
 
 def _assert_common_repr_fields(chara_data, expected_name):
@@ -278,19 +172,19 @@ def _expected_repr_name(chara_data):
     return name
 
 
-def test_repr_koikatu_fields():
-    kc = KoikatuCharaData.load("./data/kk_chara.png")
+def test_repr_koikatu_fields(data_dir):
+    kc = KoikatuCharaData.load(data_dir / "kk_chara.png")
     expected_name = _expected_repr_name(kc)
     _assert_common_repr_fields(kc, expected_name)
 
 
-def test_repr_mod_character_has_kkex():
-    kc = KoikatuCharaData.load("./data/kk_mod_chara.png")
+def test_repr_mod_character_has_kkex(data_dir):
+    kc = KoikatuCharaData.load(data_dir / "kk_mod_chara.png")
     assert "has_kkex=True" in repr(kc)
 
 
-def test_repr_emocre_name():
-    ec = EmocreCharaData.load("./data/ec_chara.png")
+def test_repr_emocre_name(data_dir):
+    ec = EmocreCharaData.load(data_dir / "ec_chara.png")
     expected_name = _expected_repr_name(ec)
     _assert_common_repr_fields(ec, expected_name)
     repr_text = repr(ec)
@@ -298,18 +192,19 @@ def test_repr_emocre_name():
     assert f"dataid={ec.dataid.decode('utf-8')!r}" in repr_text
 
 
-def test_repr_sunshine_contains_about_guids():
-    kks = KoikatuCharaData.load("./data/kks_chara.png")
+def test_repr_sunshine_contains_about_guids(data_dir):
+    kks = KoikatuCharaData.load(data_dir / "kks_chara.png")
     repr_text = repr(kks)
     assert f"userid={kks['About']['userID']!r}" in repr_text
     assert f"dataid={kks['About']['dataID']!r}" in repr_text
 
 
-def test_repr_honeycome_like_name_and_about_guids():
+def test_repr_honeycome_like_name_and_about_guids(data_dir):
     for cls, path in [
-        (HoneycomeCharaData, "./data/hc_chara.png"),
-        (SummerVacationCharaData, "./data/sv_chara.png"),
-        (AicomiCharaData, "./data/ac_chara.png"),
+        (HoneycomeCharaData, data_dir / "hc_chara.png"),
+        (SummerVacationCharaData, data_dir / "sv_chara.png"),
+        (AicomiCharaData, data_dir / "ac_chara.png"),
+        (AmanatsuCharaData, data_dir / "al_chara.png"),
     ]:
         chara = cls.load(path)
         repr_text = repr(chara)
@@ -319,20 +214,20 @@ def test_repr_honeycome_like_name_and_about_guids():
         assert f"dataid={chara['About']['dataID']!r}" in repr_text
 
 
-def test_character_str_falls_back_to_repr():
+def test_character_str_falls_back_to_repr(data_dir):
     samples = [
-        KoikatuCharaData.load("./data/kk_chara.png"),
-        EmocreCharaData.load("./data/ec_chara.png"),
-        HoneycomeCharaData.load("./data/hc_chara.png"),
-        SummerVacationCharaData.load("./data/sv_chara.png"),
-        AicomiCharaData.load("./data/ac_chara.png"),
+        KoikatuCharaData.load(data_dir / "kk_chara.png"),
+        EmocreCharaData.load(data_dir / "ec_chara.png"),
+        HoneycomeCharaData.load(data_dir / "hc_chara.png"),
+        SummerVacationCharaData.load(data_dir / "sv_chara.png"),
+        AicomiCharaData.load(data_dir / "ac_chara.png"),
+        AmanatsuCharaData.load(data_dir / "al_chara.png"),
     ]
     for chara in samples:
         assert str(chara) == repr(chara)
 
 
 def _collect_image_summaries(obj):
-    """Recursively collect all strings that look like image summaries."""
     found = []
     if isinstance(obj, dict):
         for v in obj.values():
@@ -346,7 +241,6 @@ def _collect_image_summaries(obj):
 
 
 def _has_base64_image(obj):
-    """Check if any string value looks like a base64-encoded PNG/JPEG."""
     if isinstance(obj, dict):
         return any(_has_base64_image(v) for v in obj.values())
     if isinstance(obj, list):
@@ -359,18 +253,18 @@ def _has_base64_image(obj):
 @pytest.mark.parametrize(
     "loader,path",
     [
-        (KoikatuCharaData, "./data/kk_chara.png"),
-        (AmanatsuCharaData, "./data/al_chara.png"),
-        (SummerVacationCharaData, "./data/sv_chara.png"),
+        (KoikatuCharaData, DATA_DIR / "kk_chara.png"),
+        (AmanatsuCharaData, DATA_DIR / "al_chara.png"),
+        (SummerVacationCharaData, DATA_DIR / "sv_chara.png"),
     ],
     ids=["kk", "al", "svs"],
 )
 class TestSaveJsonSummarizeImage:
-    def test_summarize_image_default(self, loader, path):
+    def test_summarize_image_default(self, loader, path, tmp_path):
         chara = loader.load(path)
-        tmpfile = tempfile.NamedTemporaryFile(suffix=".json")
-        chara.save_json(tmpfile.name, include_image=True)
-        with open(tmpfile.name) as f:
+        out_path = tmp_path / "out.json"
+        chara.save_json(str(out_path), include_image=True)
+        with open(out_path) as f:
             data = json.load(f)
         summaries = _collect_image_summaries(data)
         assert len(summaries) >= 1
@@ -378,12 +272,62 @@ class TestSaveJsonSummarizeImage:
             assert _IMAGE_SUMMARY_RE.match(s)
         assert not _has_base64_image(data)
 
-    def test_summarize_image_false(self, loader, path):
+    def test_summarize_image_false(self, loader, path, tmp_path):
         chara = loader.load(path)
-        tmpfile = tempfile.NamedTemporaryFile(suffix=".json")
-        chara.save_json(tmpfile.name, include_image=True, summarize_image=False)
-        with open(tmpfile.name) as f:
+        out_path = tmp_path / "out.json"
+        chara.save_json(str(out_path), include_image=True, summarize_image=False)
+        with open(out_path) as f:
             data = json.load(f)
         summaries = _collect_image_summaries(data)
         assert len(summaries) == 0
         assert _has_base64_image(data)
+
+
+def test_load_amanatsu_coordinate_structure(data_dir):
+    al = AmanatsuCharaData.load(data_dir / "al_chara.png")
+    coord = al["Coordinate"]
+    assert len(coord.data) == 2
+    for entry in coord.data:
+        assert "Clothes" in entry.blockdata
+        assert "Accessory" in entry.blockdata
+        assert "Hair" in entry.blockdata
+        assert "FaceMakeup" in entry.blockdata
+        assert "BodyMakeup" in entry.blockdata
+        assert "About" in entry.blockdata
+
+
+def test_load_al_coordinate(data_dir):
+    entry = CoordinateEntry.load(data_dir / "al_coordinate.png", contains_png=True)
+    assert entry.image is not None
+    assert entry.header == b"\xe3\x80\x90ALClothes\xe3\x80\x91"
+    assert entry.product_no == 100
+    assert entry.blockdata == ["Clothes", "Accessory", "Hair", "FaceMakeup", "BodyMakeup", "About"]
+    assert entry.original_file_path.endswith("al_coordinate.png")
+
+
+def test_save_al_coordinate(data_dir, tmp_path):
+    with open(data_dir / "al_coordinate.png", "rb") as f:
+        raw_data = f.read()
+    entry = CoordinateEntry.load(data_dir / "al_coordinate.png", contains_png=True)
+    out_path = tmp_path / "al_coordinate.png"
+    entry.save(str(out_path))
+    with open(out_path, "rb") as f:
+        saved_data = f.read()
+    assert raw_data == saved_data
+
+
+def test_load_chara_header(data_dir):
+    kch = KoikatuCharaHeader.load(data_dir / "kk_chara.png")
+    assert kch.image is not None
+    assert kch.product_no == 100
+    assert kch.header == b"\xe3\x80\x90KoiKatuChara\xe3\x80\x91"
+    assert kch.version is not None
+    assert kch.face_image is not None
+
+
+def test_load_chara_header_from_bytes(data_dir):
+    with open(data_dir / "kk_chara.png", "rb") as f:
+        raw = f.read()
+    kch = KoikatuCharaHeader.load(raw)
+    assert kch.product_no == 100
+    assert kch.header is not None

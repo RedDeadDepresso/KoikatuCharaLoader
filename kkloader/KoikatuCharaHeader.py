@@ -3,7 +3,7 @@
 import io
 from typing import Union
 
-from kkloader.funcs import get_png, has_png_magic, load_length, load_type
+from kkloader.funcs import get_png, has_png_magic, load_length, load_type, to_stream
 
 
 class KoikatuCharaHeader:
@@ -25,20 +25,7 @@ class KoikatuCharaHeader:
             filelike: Path, bytes, or a BytesIO stream containing the data.
         """
         kch = cls()
-
-        if isinstance(filelike, str):
-            with open(filelike, "br") as f:
-                data = f.read()
-            data_stream = io.BytesIO(data)
-
-        elif isinstance(filelike, bytes):
-            data_stream = io.BytesIO(filelike)
-
-        elif isinstance(filelike, io.BytesIO):
-            data_stream = filelike
-
-        else:
-            raise ValueError("unsupported input. type:{}".format(type(filelike)))
+        data_stream, _ = to_stream(filelike)
 
         if has_png_magic(data_stream):
             kch.image = get_png(data_stream)

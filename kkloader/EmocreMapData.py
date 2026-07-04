@@ -2,7 +2,7 @@ import io
 import json
 import struct
 
-from kkloader.funcs import get_png, load_length, load_string, load_type
+from kkloader.funcs import compare_versions, get_png, load_length, load_string, load_type, to_stream, write_string
 
 
 class EmocreMapData:
@@ -12,20 +12,7 @@ class EmocreMapData:
     @staticmethod
     def load(filelike, contains_png=True):
         em = EmocreMapData()
-
-        if isinstance(filelike, str):
-            with open(filelike, "br") as f:
-                data = f.read()
-            data_stream = io.BytesIO(data)
-
-        elif isinstance(filelike, bytes):
-            data_stream = io.BytesIO(filelike)
-
-        elif isinstance(filelike, io.BytesIO):
-            data_stream = filelike
-
-        else:
-            raise ValueError("unsupported input. type:{}".format(type(filelike)))
+        data_stream, _ = to_stream(filelike)
 
         em.png_data = None
         if contains_png:
@@ -42,14 +29,14 @@ class EmocreMapData:
             em.packages.append(load_type(data_stream, "i"))
         em.name = load_length(data_stream, "b")
         em.language = load_type(data_stream, "i")
-        if "0.0.5.2" < em.version.decode():
+        if compare_versions(em.version.decode(), "0.0.5.2") > 0:
             em.objects_num = load_type(data_stream, "i")
             em.map_scene = load_type(data_stream, "b")
 
         em.nodes = []
         length = load_type(data_stream, "i")
         for i in range(length):
-            if "0.0.5.2" > em.version.decode():
+            if compare_versions(em.version.decode(), "0.0.5.2") < 0:
                 load_type(data_stream, "i")
             nodetype = load_type(data_stream, "i")
             em.nodes.append(Node(data_stream, em.version, nodetype=nodetype))
@@ -77,26 +64,26 @@ class EmocreMapData:
         if self.png_data:
             data.write(self.png_data)
         write_type(data, self.product_no, "i")
-        write_string(data, self.header)
-        write_string(data, self.version)
-        write_string(data, self.userid)
-        write_string(data, self.dataid)
+        _write_length_prefixed(data, self.header)
+        _write_length_prefixed(data, self.version)
+        _write_length_prefixed(data, self.userid)
+        _write_length_prefixed(data, self.dataid)
         write_type(data, len(self.packages), "i")
         for i in self.packages:
             write_type(data, i, "i")
-        write_string(data, self.name)
+        _write_length_prefixed(data, self.name)
         write_type(data, self.language, "i")
         if hasattr(self, "objects_num"):
             write_type(data, self.objects_num, "i")
             write_type(data, self.map_scene, "b")
         write_type(data, len(self.nodes), "i")
         for i in self.nodes:
-            if "0.0.5.2" > self.version.decode():
+            if compare_versions(self.version.decode(), "0.0.5.2") < 0:
                 write_type(data, -1, "i")
             write_type(data, i.nodetype, "i")
             i.serialize(data)
 
-        write_string(data, self.camera_version)
+        _write_length_prefixed(data, self.camera_version)
         write_json(data, self.camera_pos)
         write_json(data, self.camera_rot)
         write_type(data, self.camera_dist, "f")
@@ -163,9 +150,9 @@ class Node:
             self.emissioncolor = json.loads(load_length(data_stream, "b"))
             self.emissionpower = load_type(data_stream, "f")
             self.lightcancel = load_type(data_stream, "f")
-            if "0.0.3" < version.decode():
+            if compare_versions(version.decode(), "0.0.3") > 0:
                 self.piller = Node(data_stream, version, skip=True)
-            if "0.0.5.3" < version.decode():
+            if compare_versions(version.decode(), "0.0.5.3") > 0:
                 self.sielding = load_type(data_stream, "b")
             self.nodes = []
             length = load_type(data_stream, "i")
@@ -232,7 +219,7 @@ class Node:
                 i.serialize(datas)
 
         elif self.nodetype == 4:
-            write_string(datas, self.name)
+            _write_length_prefixed(datas, self.name)
             write_json(datas, self.center)
             write_json(datas, self.size)
             write_type(datas, len(self.nodes), "i")
@@ -243,13 +230,13 @@ class Node:
 
 def write_json(datas, value):
     converted = json.dumps(value, separators=(",", ":")).encode()
-    write_string(datas, converted)
+    _write_length_prefixed(datas, converted)
 
 
 def write_type(data_stream, value, format):
     data_stream.write(struct.pack(format, value))
 
 
-def write_string(datas, value):
+def _write_length_prefixed(datas, value):
     datas.write(struct.pack("b", len(value)))
     datas.write(value)

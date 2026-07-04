@@ -4,7 +4,10 @@ This module provides low-level functions for reading and writing binary data,
 MessagePack serialization with special handling for KKEx data, and PNG image extraction.
 """
 
+import io
+import os
 import struct
+from pathlib import Path
 from typing import Any, BinaryIO
 
 from msgpack import packb, unpackb
@@ -175,6 +178,87 @@ def msg_pack_kkex(data: Any) -> tuple[bytes, int]:
     packer = KKExPacker(use_single_float=True, use_bin_type=True)
     serialized = packer.pack(data)
     return serialized, len(serialized)
+
+
+def to_stream(filelike: str | Path | bytes | io.BytesIO) -> tuple[io.BytesIO, str | None]:
+    """Normalize filelike to a BytesIO stream.
+
+    Returns (stream, absolute_file_path_or_None).
+    """
+    if isinstance(filelike, (str, Path)):
+        with open(filelike, "rb") as f:
+            data = f.read()
+        return io.BytesIO(data), os.path.abspath(filelike)
+    elif isinstance(filelike, bytes):
+        return io.BytesIO(filelike), None
+    elif isinstance(filelike, io.BytesIO):
+        return filelike, None
+    else:
+        raise ValueError("unsupported input. type:{}".format(type(filelike)))
+
+
+def compare_versions(a: str, b: str) -> int:
+    """Compare two dotted version strings numerically.
+
+    Returns -1 if a < b, 0 if equal, 1 if a > b.
+    """
+    a_parts = [int(x) for x in a.split(".")]
+    b_parts = [int(x) for x in b.split(".")]
+    while len(a_parts) < len(b_parts):
+        a_parts.append(0)
+    while len(b_parts) < len(a_parts):
+        b_parts.append(0)
+    for va, vb in zip(a_parts, b_parts):
+        if va < vb:
+            return -1
+        elif va > vb:
+            return 1
+    return 0
+
+
+def read_lstinfo_blocks(stream: BinaryIO) -> tuple[bytes, list[dict[str, Any]], list[str], list[str]]:
+    """Read lstInfo index and raw block payload from a binary stream.
+
+    Returns (raw_payload, lstinfo_entries, original_order, serialized_order).
+    """
+    lstinfo_index = msg_unpack(load_length(stream, "i"))
+    raw_payload = load_length(stream, "q")
+    entries = lstinfo_index["lstInfo"]
+    original_order = [e["name"] for e in entries]
+    serialized_order = [e["name"] for e in sorted(entries, key=lambda e: e["pos"])]
+    return raw_payload, entries, original_order, serialized_order
+
+
+def write_lstinfo_blocks(obj: Any, serialized_order: list[str], original_order: list[str]) -> bytes:
+    """Serialize blocks in lstinfo format (index + payload).
+
+    obj must have attributes named after each block, each with a .serialize() method.
+    Returns the combined bytes: [lstinfo_len:i][lstinfo_packed][payload_len:q][payload].
+    """
+    cumsum = 0
+    block_values: list[bytes] = []
+    lstinfos: list[dict[str, Any]] = []
+    for name in serialized_order:
+        data, block_name, version = getattr(obj, name).serialize()
+        lstinfos.append({"name": block_name, "version": version, "pos": cumsum, "size": len(data)})
+        block_values.append(data)
+        cumsum += len(data)
+    payload = b"".join(block_values)
+
+    lstinfos_dict = {item["name"]: item for item in lstinfos}
+    lstinfos_ordered = [lstinfos_dict[k] for k in original_order]
+
+    lstinfo_packed, lstinfo_len = msg_pack({"lstInfo": lstinfos_ordered})
+
+    ipack = struct.Struct("i")
+    return b"".join(
+        [
+            ipack.pack(lstinfo_len),
+            lstinfo_packed,
+            struct.pack("q", len(payload)),
+            payload,
+        ]
+    )
 
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"

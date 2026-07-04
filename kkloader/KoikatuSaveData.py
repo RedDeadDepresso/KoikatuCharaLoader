@@ -2,7 +2,7 @@ import io
 import struct
 
 from kkloader import KoikatuCharaData
-from kkloader.funcs import load_string, load_type, write_string
+from kkloader.funcs import load_string, load_type, to_stream, write_string
 
 
 class KoikatuSaveData:
@@ -34,20 +34,7 @@ class KoikatuSaveData:
     @staticmethod
     def load(filelike):
         ks = KoikatuSaveData()
-
-        if isinstance(filelike, str):
-            with open(filelike, "br") as f:
-                data = f.read()
-            data_stream = io.BytesIO(data)
-
-        elif isinstance(filelike, bytes):
-            data_stream = io.BytesIO(filelike)
-
-        elif isinstance(filelike, io.BytesIO):
-            data_stream = filelike
-
-        else:
-            ValueError("unsupported input. type:{}".format(type(filelike)))
+        data_stream, _ = to_stream(filelike)
 
         ks._load_header(data_stream)
         ks._load_player(data_stream)

@@ -1,52 +1,32 @@
 """Aicomi character data loader and saver."""
 
-import kkloader.KoikatuCharaData
+from functools import partial
+
 from kkloader.HoneycomeCharaData import Coordinate, Custom, Graphic
-from kkloader.KoikatuCharaData import BlockData
+from kkloader.KoikatuCharaData import About, BlockData, KoikatuCharaData, Parameter, Status
 
 
-class AicomiCharaData(kkloader.KoikatuCharaData):
+class AicomiCharaData(KoikatuCharaData):
     """Character data class for Aicomi.
 
     Extends KoikatuCharaData with Aicomi-specific block types,
     reusing Custom, Coordinate, and Graphic from HoneycomeCharaData.
     """
 
-    def __init__(self) -> None:
-        """Initialize an AicomiCharaData instance with Aicomi block modules."""
-        self.modules = {
-            "Custom": Custom,
-            "Coordinate": Coordinate,
-            "Parameter": kkloader.kk_Parameter,
-            "Status": kkloader.kk_Status,
-            "Graphic": Graphic,
-            "About": kkloader.kk_About,
-            "GameParameter_AC": GameParameter_AC,
-            "GameInfo_AC": GameInfo_AC,
-        }
+    pass
 
 
-class GameParameter_AC(BlockData):
-    """Block data for Aicomi game parameters."""
-
-    def __init__(self, data: bytes, version: str) -> None:
-        """Initialize a GameParameter_AC block data instance.
-
-        Args:
-            data: Raw bytes containing the game parameter data.
-            version: The version string of this block.
-        """
-        super().__init__(name="GameParameter_AC", data=data, version=version)
+GameParameter_AC = partial(BlockData, name="GameParameter_AC")
+GameInfo_AC = partial(BlockData, name="GameInfo_AC")
 
 
-class GameInfo_AC(BlockData):
-    """Block data for Aicomi game info."""
-
-    def __init__(self, data: bytes, version: str) -> None:
-        """Initialize a GameInfo_AC block data instance.
-
-        Args:
-            data: Raw bytes containing the game info data.
-            version: The version string of this block.
-        """
-        super().__init__(name="GameInfo_AC", data=data, version=version)
+AicomiCharaData.MODULES = {
+    "Custom": Custom,
+    "Coordinate": Coordinate,
+    "Parameter": Parameter,
+    "Status": Status,
+    "Graphic": Graphic,
+    "About": About,
+    "GameParameter_AC": GameParameter_AC,
+    "GameInfo_AC": GameInfo_AC,
+}

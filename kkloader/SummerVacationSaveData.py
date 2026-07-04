@@ -1,13 +1,16 @@
 """Summer Vacation save data loader and serializer."""
 
+from __future__ import annotations
+
 import io
 import struct
-from typing import Any, BinaryIO, Dict, List, Tuple, Union
+from typing import TYPE_CHECKING, Any, BinaryIO, Dict, List, Tuple, Union
 
 from kkloader import SummerVacationCharaData as svcd
-from kkloader.funcs import load_length, msg_pack, msg_unpack
+from kkloader.funcs import load_length, msg_pack, msg_unpack, to_stream
 
-import pandas as pd
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 class SummerVacationSaveData:
@@ -38,20 +41,7 @@ class SummerVacationSaveData:
     def load(cls, filelike: Union[str, bytes, io.BytesIO]) -> "SummerVacationSaveData":
         """Load a Summer Vacation save file into a new instance."""
         svs = cls()
-
-        if isinstance(filelike, str):
-            with open(filelike, "br") as f:
-                data = f.read()
-            data_stream = io.BytesIO(data)
-
-        elif isinstance(filelike, bytes):
-            data_stream = io.BytesIO(filelike)
-
-        elif isinstance(filelike, io.BytesIO):
-            data_stream = filelike
-
-        else:
-            raise ValueError("unsupported input. type:{}".format(type(filelike)))
+        data_stream, _ = to_stream(filelike)
 
         # Meta information of the save data
         svs.meta = msg_unpack(load_length(data_stream, "<I"))
@@ -152,9 +142,16 @@ class SummerVacationSaveData:
         with open(filename, "wb") as f:
             f.write(bytes(self))
 
-    # Create an adjacency matrix representing the interaction data between characters
-    def generate_memory_matrix(self, command: int = 0, active: bool = True, decision: str = "yes") -> pd.DataFrame:
-        """Generate a memory interaction matrix as a DataFrame."""
+    def generate_memory_matrix(self, command: int = 0, active: bool = True, decision: str = "yes") -> "pd.DataFrame":
+        """Generate a memory interaction matrix as a DataFrame.
+
+        Requires the ``pandas`` optional dependency (``pip install kkloader[pandas]``).
+        """
+        try:
+            import pandas as pd
+        except ImportError:
+            raise ImportError("pandas is required for this method. Install it with: pip install kkloader[pandas]") from None
+
         interract = "activeCommand" if active else "passiveCommand"
 
         assert interract in ["activeCommand", "passiveCommand"]
@@ -180,9 +177,16 @@ class SummerVacationSaveData:
 
         return pd.DataFrame.from_dict(rows).T
 
-    # Create an adjacency matrix representing the sexual interaction data between characters
-    def generate_sexual_memory_matrix(self, command: int) -> pd.DataFrame:
-        """Generate a sexual interaction matrix as a DataFrame."""
+    def generate_sexual_memory_matrix(self, command: int) -> "pd.DataFrame":
+        """Generate a sexual interaction matrix as a DataFrame.
+
+        Requires the ``pandas`` optional dependency (``pip install kkloader[pandas]``).
+        """
+        try:
+            import pandas as pd
+        except ImportError:
+            raise ImportError("pandas is required for this method. Install it with: pip install kkloader[pandas]") from None
+
         rows = {}
         for c in self.chara_details:
             from_index = c["charasGameParam"]["Index"]

@@ -1,20 +1,20 @@
 """Honeycome scene data loader and saver."""
 
 import io
-import os
 import struct
 import sys
 from contextlib import contextmanager
 from typing import Any, Self
 
-from kkloader.funcs import get_png, load_string, load_type, write_string
+from kkloader.funcs import get_png, load_string, load_type, to_stream, write_string
 from kkloader.HoneycomeSceneObjectLoader import HoneycomeSceneObjectLoader
+from kkloader.KoikatuSceneData import SceneWalkMixin
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 
-class HoneycomeSceneData:
+class HoneycomeSceneData(SceneWalkMixin):
     """Class for loading and parsing Honeycome scene data.
 
     This implementation focuses on loading objects (items and folders) only.
@@ -30,13 +30,6 @@ class HoneycomeSceneData:
         objects: Dictionary of scene objects keyed by object ID.
         unknown_tail: Remaining unparsed data (lights, camera, etc.).
     """
-
-    CHARACTER = 0
-    ITEM = 1
-    LIGHT = 2
-    FOLDER = 3
-    ROUTE = 4
-    CAMERA = 5
 
     def __init__(self) -> None:
         """Initialize scene data with default values."""
@@ -67,15 +60,6 @@ class HoneycomeSceneData:
         self.crypto_key: bytes | None = None
         self.crypto_iv: bytes | None = None
         self.original_filename: str | None = None
-
-    OBJECT_TYPE_NAMES: dict[int, str] = {
-        CHARACTER: "Character",
-        ITEM: "Item",
-        LIGHT: "Light",
-        FOLDER: "Folder",
-        ROUTE: "Route",
-        CAMERA: "Camera",
-    }
 
     @staticmethod
     @contextmanager
@@ -110,19 +94,7 @@ class HoneycomeSceneData:
         hs = cls()
         hs.crypto_key = None
         hs.crypto_iv = None
-        hs.original_filename = None
-
-        if isinstance(filelike, str):
-            with open(filelike, "br") as f:
-                data = f.read()
-            data_stream = io.BytesIO(data)
-            hs.original_filename = os.path.abspath(filelike)
-        elif isinstance(filelike, bytes):
-            data_stream = io.BytesIO(filelike)
-        elif isinstance(filelike, io.BytesIO):
-            data_stream = filelike
-        else:
-            raise ValueError(f"Unsupported input type: {type(filelike)}")
+        data_stream, hs.original_filename = to_stream(filelike)
 
         # Read PNG image
         hs.image = get_png(data_stream)
@@ -281,98 +253,6 @@ class HoneycomeSceneData:
     def _encrypt_unknown(self, data: bytes) -> bytes:
         encryptor = Cipher(algorithms.AES(self.crypto_key), modes.CBC(self.crypto_iv), backend=default_backend()).encryptor()
         return encryptor.update(data) + encryptor.finalize()
-
-    def walk(self, include_depth: bool = False, object_type: int | None = None):
-        """
-        Recursively iterate over all objects in the scene, including nested child objects.
-
-        This method traverses the entire object hierarchy, yielding each object
-        in depth-first order. It handles the different child structures for
-        different object types:
-        - Character (type 0): child is Dict[int, List[ObjectInfo]]
-        - Item (type 1), Folder (type 3), Route (type 4): child is List[ObjectInfo]
-        - Light (type 2), Camera (type 5): no children
-
-        Args:
-            include_depth: If True, yields (key, obj_info, depth) tuples.
-                          If False, yields (key, obj_info) tuples.
-            object_type: Optional object type filter. If provided, only objects
-                         with matching type are yielded.
-
-        Yields:
-            If include_depth is False:
-                tuple: (key, obj_info) where key is the object's key/index
-                       and obj_info is the object dictionary with 'type' and 'data'.
-            If include_depth is True:
-                tuple: (key, obj_info, depth) where depth indicates nesting level
-                       (0 for top-level objects).
-
-        Example:
-            >>> scene = HoneycomeSceneData.load("scene.png")
-            >>> for key, obj in scene.walk():
-            ...     print(f"Object {key}: type={obj['type']}")
-            >>> # With depth:
-            >>> for key, obj, depth in scene.walk(include_depth=True):
-            ...     print(f"{'  ' * depth}Object {key}: type={obj['type']}")
-            >>> # Filter by type (characters):
-            >>> for key, obj in scene.walk(object_type=HoneycomeSceneData.CHARACTER):
-            ...     print(f"Character key={key}")
-        """
-
-        def _should_yield(obj_info: dict[str, Any]) -> bool:
-            if object_type is None:
-                return True
-            return obj_info.get("type") == object_type
-
-        def _walk_children(obj_info, depth):
-            """Recursively walk through child objects."""
-            data = obj_info.get("data", {})
-            child = data.get("child")
-
-            if child is None:
-                return
-
-            obj_type = obj_info.get("type")
-
-            # Character type (0) has Dict[int, List[ObjectInfo]] structure
-            if obj_type == 0:
-                for child_key, child_list in child.items():
-                    for idx, child_obj in enumerate(child_list):
-                        if _should_yield(child_obj):
-                            if include_depth:
-                                yield (child_key, idx), child_obj, depth + 1
-                            else:
-                                yield (child_key, idx), child_obj
-                        yield from _walk_children(child_obj, depth + 1)
-            else:
-                # Item (1), Folder (3), Route (4) have List[ObjectInfo] structure
-                for idx, child_obj in enumerate(child):
-                    if _should_yield(child_obj):
-                        if include_depth:
-                            yield idx, child_obj, depth + 1
-                        else:
-                            yield idx, child_obj
-                    yield from _walk_children(child_obj, depth + 1)
-
-        # Iterate over top-level objects
-        for key, obj_info in self.objects.items():
-            if _should_yield(obj_info):
-                if include_depth:
-                    yield key, obj_info, 0
-                else:
-                    yield key, obj_info
-            yield from _walk_children(obj_info, 0)
-
-    def count_object_types(self) -> dict[str, int]:
-        """Count scene objects by type name across the full object tree."""
-        counts: dict[str, int] = {}
-        for _, obj_info in self.walk():
-            obj_type = obj_info.get("type")
-            if not isinstance(obj_type, int):
-                continue
-            name = self.OBJECT_TYPE_NAMES.get(obj_type, f"Unknown({obj_type})")
-            counts[name] = counts.get(name, 0) + 1
-        return counts
 
     def to_dict(self):
         """Convert the scene data to a dictionary"""

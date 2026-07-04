@@ -1,36 +1,23 @@
 """Amanatsu Location character data loader and saver."""
 
 import io
-import os
 import struct
+from functools import partial
 from typing import Any
 
-import kkloader.KoikatuCharaData
-from kkloader.funcs import get_png, load_length, load_type, msg_pack, msg_unpack
+from kkloader.funcs import get_png, load_length, load_type, msg_pack, msg_unpack, read_lstinfo_blocks, to_stream, write_lstinfo_blocks
 from kkloader.HoneycomeCharaData import Custom, Graphic
-from kkloader.KoikatuCharaData import BlockData
+from kkloader.KoikatuCharaData import About, BlockData, KoikatuCharaData, Parameter, Status
 
 
-class AmanatsuCharaData(kkloader.KoikatuCharaData):
+class AmanatsuCharaData(KoikatuCharaData):
     """Character data class for Amanatsu Location (甘夏ろけーしょん).
 
     Extends KoikatuCharaData with Amanatsu Location-specific block types.
     Reuses Custom and Graphic from HoneycomeCharaData.
     """
 
-    def __init__(self) -> None:
-        """Initialize an AmanatsuCharaData instance with Amanatsu Location block modules."""
-        self.modules = {
-            "Custom": Custom,
-            "Coordinate": Coordinate,
-            "Parameter": kkloader.kk_Parameter,
-            "Status": kkloader.kk_Status,
-            "Graphic": Graphic,
-            "About": kkloader.kk_About,
-            "GameParameter_AL": GameParameter_AL,
-            "GameInfo_AL": GameInfo_AL,
-            "ThumbParameter": ThumbParameter,
-        }
+    pass
 
 
 class CoordinateEntry:
@@ -64,18 +51,7 @@ class CoordinateEntry:
             A CoordinateEntry instance with loaded data.
         """
         entry = cls()
-
-        if isinstance(filelike, str):
-            with open(filelike, "br") as f:
-                raw_bytes = f.read()
-            stream = io.BytesIO(raw_bytes)
-            entry.original_file_path = os.path.abspath(filelike)
-        elif isinstance(filelike, bytes):
-            stream = io.BytesIO(filelike)
-        elif isinstance(filelike, io.BytesIO):
-            stream = filelike
-        else:
-            raise ValueError("unsupported input. type:{}".format(type(filelike)))
+        stream, entry.original_file_path = to_stream(filelike)
 
         if contains_png:
             entry.image = get_png(stream)
@@ -85,21 +61,14 @@ class CoordinateEntry:
         entry.version = load_length(stream, "b")
         entry.unknown = stream.read(2)
 
-        lstinfo_index = msg_unpack(load_length(stream, "i"))
-        lstinfo_raw = load_length(stream, "q")
+        raw_payload, entries, entry.original_lstinfo_order, entry.serialized_lstinfo_order = read_lstinfo_blocks(stream)
 
         entry.blockdata = []
-        entry.original_lstinfo_order = list(map(lambda x: x["name"], lstinfo_index["lstInfo"]))
-        entry.serialized_lstinfo_order = list(map(lambda x: x["name"], sorted(lstinfo_index["lstInfo"], key=lambda x: x["pos"])))
-
-        for i in lstinfo_index["lstInfo"]:
-            name = i["name"]
-            pos = i["pos"]
-            size = i["size"]
-            version = i["version"]
-            block_data = lstinfo_raw[pos : pos + size]
+        for e in entries:
+            name = e["name"]
+            block_data = raw_payload[e["pos"] : e["pos"] + e["size"]]
             entry.blockdata.append(name)
-            setattr(entry, name, BlockData(name=name, data=block_data, version=version))
+            setattr(entry, name, BlockData(name=name, data=block_data, version=e["version"]))
 
         return entry
 
@@ -120,34 +89,17 @@ class CoordinateEntry:
         Returns:
             Binary representation of the coordinate entry.
         """
-        cumsum = 0
-        block_values: list[bytes] = []
-        lstinfos: list[dict[str, Any]] = []
-        for name in self.serialized_lstinfo_order:
-            data, block_name, version = getattr(self, name).serialize()
-            lstinfos.append({"name": block_name, "version": version, "pos": cumsum, "size": len(data)})
-            block_values.append(data)
-            cumsum += len(data)
-        block_payload = b"".join(block_values)
+        lstinfo_bytes = write_lstinfo_blocks(self, self.serialized_lstinfo_order, self.original_lstinfo_order)
 
-        lstinfos_dict = {item["name"]: item for item in lstinfos}
-        lstinfos_ordered = [lstinfos_dict[k] for k in self.original_lstinfo_order]
-
-        lstinfo_packed, lstinfo_len = msg_pack({"lstInfo": lstinfos_ordered})
-
-        ipack = struct.Struct("i")
         bpack = struct.Struct("b")
         parts = [
-            ipack.pack(self.product_no),
+            struct.Struct("i").pack(self.product_no),
             bpack.pack(len(self.header)),
             self.header,
             bpack.pack(len(self.version)),
             self.version,
             self.unknown,
-            ipack.pack(lstinfo_len),
-            lstinfo_packed,
-            struct.pack("q", len(block_payload)),
-            block_payload,
+            lstinfo_bytes,
         ]
         return b"".join(parts)
 
@@ -211,40 +163,19 @@ class Coordinate(BlockData):
         return [entry.jsonalizable() for entry in self.data]
 
 
-class GameParameter_AL(BlockData):
-    """Block data for Amanatsu Location game parameters."""
-
-    def __init__(self, data: bytes, version: str) -> None:
-        """Initialize a GameParameter_AL block data instance.
-
-        Args:
-            data: Raw bytes containing the game parameter data.
-            version: The version string of this block.
-        """
-        super().__init__(name="GameParameter_AL", data=data, version=version)
+GameParameter_AL = partial(BlockData, name="GameParameter_AL")
+GameInfo_AL = partial(BlockData, name="GameInfo_AL")
+ThumbParameter = partial(BlockData, name="ThumbParameter")
 
 
-class GameInfo_AL(BlockData):
-    """Block data for Amanatsu Location game info."""
-
-    def __init__(self, data: bytes, version: str) -> None:
-        """Initialize a GameInfo_AL block data instance.
-
-        Args:
-            data: Raw bytes containing the game info data.
-            version: The version string of this block.
-        """
-        super().__init__(name="GameInfo_AL", data=data, version=version)
-
-
-class ThumbParameter(BlockData):
-    """Block data for Amanatsu Location thumbnail parameters."""
-
-    def __init__(self, data: bytes, version: str) -> None:
-        """Initialize a ThumbParameter block data instance.
-
-        Args:
-            data: Raw bytes containing the thumbnail parameter data.
-            version: The version string of this block.
-        """
-        super().__init__(name="ThumbParameter", data=data, version=version)
+AmanatsuCharaData.MODULES = {
+    "Custom": Custom,
+    "Coordinate": Coordinate,
+    "Parameter": Parameter,
+    "Status": Status,
+    "Graphic": Graphic,
+    "About": About,
+    "GameParameter_AL": GameParameter_AL,
+    "GameInfo_AL": GameInfo_AL,
+    "ThumbParameter": ThumbParameter,
+}
