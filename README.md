@@ -44,6 +44,7 @@ That's it! :)
   - `SummerVacationCharaData`
   - `SummerVacationSaveData`
   - `AicomiCharaData`
+  - `AicomiSaveData`
   - `AmanatsuCharaData`
   - `AmanatsuCharaData.CoordinateEntry` (AmanatsuLocation coordinate data)
   - `HoneycomeSceneData` (also compatible with DigitalCraft)
