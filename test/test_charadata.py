@@ -11,6 +11,7 @@ from kkloader import (
     KoikatuCharaData,
     SummerVacationCharaData,
 )
+from kkloader.AmanatsuCharaData import CoordinateEntry
 from kkloader.KoikatuCharaHeader import KoikatuCharaHeader
 
 import pytest
@@ -69,8 +70,9 @@ def test_load_mod_character(data_dir):
         (HoneycomeCharaData, "hc_chara.png"),
         (SummerVacationCharaData, "sv_chara.png"),
         (AicomiCharaData, "ac_chara.png"),
+        (AmanatsuCharaData, "al_chara.png"),
     ],
-    ids=["hcp", "hc", "sv", "ac"],
+    ids=["hcp", "hc", "sv", "ac", "al"],
 )
 def test_load_blocks_in_modules(loader, filename, data_dir):
     chara = loader.load(data_dir / filename)
@@ -87,6 +89,7 @@ SAVE_CASES = [
     (HoneycomeCharaData, "hc_chara.png", ["lastname", "firstname"]),
     (SummerVacationCharaData, "sv_chara.png", ["lastname", "firstname"]),
     (AicomiCharaData, "ac_chara.png", ["lastname", "firstname"]),
+    (AmanatsuCharaData, "al_chara.png", ["lastname", "firstname"]),
 ]
 
 
@@ -133,6 +136,7 @@ JSON_CASES = [
     (HoneycomeCharaData, "hc_chara.png"),
     (SummerVacationCharaData, "sv_chara.png"),
     (AicomiCharaData, "ac_chara.png"),
+    (AmanatsuCharaData, "al_chara.png"),
 ]
 
 
@@ -200,6 +204,7 @@ def test_repr_honeycome_like_name_and_about_guids(data_dir):
         (HoneycomeCharaData, data_dir / "hc_chara.png"),
         (SummerVacationCharaData, data_dir / "sv_chara.png"),
         (AicomiCharaData, data_dir / "ac_chara.png"),
+        (AmanatsuCharaData, data_dir / "al_chara.png"),
     ]:
         chara = cls.load(path)
         repr_text = repr(chara)
@@ -216,6 +221,7 @@ def test_character_str_falls_back_to_repr(data_dir):
         HoneycomeCharaData.load(data_dir / "hc_chara.png"),
         SummerVacationCharaData.load(data_dir / "sv_chara.png"),
         AicomiCharaData.load(data_dir / "ac_chara.png"),
+        AmanatsuCharaData.load(data_dir / "al_chara.png"),
     ]
     for chara in samples:
         assert str(chara) == repr(chara)
@@ -275,6 +281,39 @@ class TestSaveJsonSummarizeImage:
         summaries = _collect_image_summaries(data)
         assert len(summaries) == 0
         assert _has_base64_image(data)
+
+
+def test_load_amanatsu_coordinate_structure(data_dir):
+    al = AmanatsuCharaData.load(data_dir / "al_chara.png")
+    coord = al["Coordinate"]
+    assert len(coord.data) == 2
+    for entry in coord.data:
+        assert "Clothes" in entry.blockdata
+        assert "Accessory" in entry.blockdata
+        assert "Hair" in entry.blockdata
+        assert "FaceMakeup" in entry.blockdata
+        assert "BodyMakeup" in entry.blockdata
+        assert "About" in entry.blockdata
+
+
+def test_load_al_coordinate(data_dir):
+    entry = CoordinateEntry.load(data_dir / "al_coordinate.png", contains_png=True)
+    assert entry.image is not None
+    assert entry.header == b"\xe3\x80\x90ALClothes\xe3\x80\x91"
+    assert entry.product_no == 100
+    assert entry.blockdata == ["Clothes", "Accessory", "Hair", "FaceMakeup", "BodyMakeup", "About"]
+    assert entry.original_file_path.endswith("al_coordinate.png")
+
+
+def test_save_al_coordinate(data_dir, tmp_path):
+    with open(data_dir / "al_coordinate.png", "rb") as f:
+        raw_data = f.read()
+    entry = CoordinateEntry.load(data_dir / "al_coordinate.png", contains_png=True)
+    out_path = tmp_path / "al_coordinate.png"
+    entry.save(str(out_path))
+    with open(out_path, "rb") as f:
+        saved_data = f.read()
+    assert raw_data == saved_data
 
 
 def test_load_chara_header(data_dir):
