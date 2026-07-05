@@ -623,6 +623,32 @@ def test_save_honeycome_scene_encrypted_to_dict(scene_file, data_dir, hc_crypto)
     assert d["common_info"] == scene.common_info
 
 
+@pytest.mark.parametrize("scene_file", HC_SCENE_FILES)
+def test_load_honeycome_scene_crypto_from_env(scene_file, data_dir, hc_crypto, monkeypatch):
+    key, iv = hc_crypto
+    monkeypatch.setenv("KKLOADER_CRYPTO_KEY", key.decode("utf-8"))
+    monkeypatch.setenv("KKLOADER_CRYPTO_IV", iv.decode("utf-8"))
+
+    scene = HoneycomeSceneData.load(data_dir / scene_file)
+
+    assert scene.scene_summary is not None
+    assert isinstance(scene.scene_summary["chara_num"], int)
+    assert scene.map_info is not None
+    assert scene.common_info is not None
+
+
+@pytest.mark.parametrize("scene_file", HC_SCENE_FILES)
+def test_load_honeycome_scene_explicit_key_overrides_env(scene_file, data_dir, hc_crypto, monkeypatch):
+    key, iv = hc_crypto
+    monkeypatch.setenv("KKLOADER_CRYPTO_KEY", "wrong_key_1234567")
+    monkeypatch.setenv("KKLOADER_CRYPTO_IV", "wrong_iv_1234567x")
+
+    scene = HoneycomeSceneData.load(data_dir / scene_file, decryption_key=key, decryption_iv=iv)
+
+    assert scene.scene_summary is not None
+    assert isinstance(scene.scene_summary["chara_num"], int)
+
+
 # ============================================================
 # EmotionCreators scene tests
 # ============================================================

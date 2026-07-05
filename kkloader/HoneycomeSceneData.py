@@ -1,6 +1,7 @@
 """Honeycome scene data loader and saver."""
 
 import io
+import os
 import struct
 import sys
 from contextlib import contextmanager
@@ -92,6 +93,14 @@ class HoneycomeSceneData(SceneWalkMixin):
     ) -> Self:
         """Load Honeycome scene data from a file or bytes."""
         hs = cls()
+        if decryption_key is None:
+            env_key = os.environ.get("KKLOADER_CRYPTO_KEY")
+            if env_key is not None:
+                decryption_key = env_key.encode("utf-8")
+        if decryption_iv is None:
+            env_iv = os.environ.get("KKLOADER_CRYPTO_IV")
+            if env_iv is not None:
+                decryption_iv = env_iv.encode("utf-8")
         hs.crypto_key = decryption_key
         hs.crypto_iv = decryption_iv
         data_stream, hs.original_filename = to_stream(filelike)
