@@ -279,10 +279,7 @@ def test_honeycome_scene_repr_fields(data_dir):
 
     assert f"version={scene_data.version!r}" in repr_text
     assert f"title={scene_data.title!r}" in repr_text
-    assert f"user_id={scene_data.user_id!r}" in repr_text
-    assert f"data_id={scene_data.data_id!r}" in repr_text
-    assert f"original_filename={str((data_dir / 'hc_scene_items.png').resolve())!r}" in repr_text
-    assert f"footer_marker={scene_data.footer_marker!r}" in repr_text
+    assert f"objects={len(scene_data.objects)}" in repr_text
 
 
 def test_honeycome_scene_original_filename_for_bytes_input(data_dir):
@@ -319,10 +316,9 @@ def test_save_honeycome_scene_roundtrip(data_dir):
     assert scene_data_1.user_id == scene_data_2.user_id, "User ID mismatch"
     assert scene_data_1.data_id == scene_data_2.data_id, "Data ID mismatch"
     assert scene_data_1.title == scene_data_2.title, "Title mismatch"
-    assert scene_data_1.unknown_1 == scene_data_2.unknown_1, "Unknown 1 mismatch"
-    assert scene_data_1.unknown_2 == scene_data_2.unknown_2, "Unknown 2 mismatch"
+    assert scene_data_1.language == scene_data_2.language, "Language mismatch"
     assert len(scene_data_1.objects) == len(scene_data_2.objects), "Object count mismatch"
-    assert scene_data_1.unknown_tail == scene_data_2.unknown_tail, "Unknown tail mismatch"
+    assert scene_data_1.frame_filename == scene_data_2.frame_filename, "Frame filename mismatch"
     assert scene_data_1.footer_marker == scene_data_2.footer_marker, "Footer marker mismatch"
     assert scene_data_1.unknown_tail_extra is None
 
@@ -520,6 +516,111 @@ def test_walk_filter_object_type_honeycome_with_depth(data_dir):
     cameras = list(scene_data.walk(include_depth=True, object_type=HoneycomeSceneData.CAMERA))
     assert len(cameras) == scene_data.count_object_types()["Camera"]
     assert all(obj["type"] == HoneycomeSceneData.CAMERA for _, obj, _ in cameras)
+
+
+# ============================================================
+# Honeycome scene encrypted block tests (require crypto keys)
+# ============================================================
+
+HC_SCENE_FILES = ["hc_scene_items.png", "hc_scene_objects.png"]
+
+
+@pytest.mark.parametrize("scene_file", HC_SCENE_FILES)
+def test_load_honeycome_scene_decrypted_blocks(scene_file, data_dir, hc_crypto):
+    key, iv = hc_crypto
+    scene = HoneycomeSceneData.load(data_dir / scene_file, decryption_key=key, decryption_iv=iv)
+
+    assert scene.scene_summary is not None
+    assert "chara_num" in scene.scene_summary
+    assert "item_num" in scene.scene_summary
+    assert "map" in scene.scene_summary
+    assert isinstance(scene.scene_summary["chara_num"], int)
+
+    assert scene.map_info is not None
+    assert "no" in scene.map_info
+    assert "option" in scene.map_info
+    assert "light" in scene.map_info
+
+    assert scene.post_processing is not None
+    for pp_key in ["background", "bloom", "fog", "vignette", "depth_of_field"]:
+        assert pp_key in scene.post_processing
+
+    assert scene.camera is not None
+    assert "pos" in scene.camera
+    assert "rotate" in scene.camera
+    assert "distance" in scene.camera
+    assert "parse" in scene.camera
+
+    assert scene.camera_presets is not None
+    assert isinstance(scene.camera_presets, list)
+
+    assert scene.chara_light is not None
+    assert "color" in scene.chara_light
+    assert "intensity" in scene.chara_light
+
+    assert scene.key_light is not None
+    assert "enable" in scene.key_light
+    assert "shadow" in scene.key_light
+
+    assert scene.bgm is not None
+    assert "play" in scene.bgm
+    assert "no" in scene.bgm
+
+    assert scene.env_sound is not None
+    assert scene.outside_sound is not None
+    assert scene.background is not None
+    assert scene.common_info is not None
+    assert "item_lamp" in scene.common_info
+
+
+@pytest.mark.parametrize("scene_file", HC_SCENE_FILES)
+def test_load_honeycome_scene_without_keys_leaves_blocks_none(scene_file, data_dir):
+    scene = HoneycomeSceneData.load(data_dir / scene_file)
+
+    assert scene.scene_summary is None
+    assert scene.map_info is None
+    assert scene.post_processing is None
+    assert scene.camera is None
+    assert scene.common_info is None
+
+
+@pytest.mark.parametrize("scene_file", HC_SCENE_FILES)
+def test_save_honeycome_scene_encrypted_roundtrip(scene_file, data_dir, hc_crypto):
+    key, iv = hc_crypto
+    scene_1 = HoneycomeSceneData.load(data_dir / scene_file, decryption_key=key, decryption_iv=iv)
+
+    buf = io.BytesIO()
+    scene_1.save(buf)
+
+    buf.seek(0)
+    scene_2 = HoneycomeSceneData.load(buf, decryption_key=key, decryption_iv=iv)
+
+    assert scene_1.scene_summary == scene_2.scene_summary
+    assert scene_1.map_info == scene_2.map_info
+    assert scene_1.camera == scene_2.camera
+    assert scene_1.bgm == scene_2.bgm
+    assert scene_1.env_sound == scene_2.env_sound
+    assert scene_1.outside_sound == scene_2.outside_sound
+    assert scene_1.background == scene_2.background
+    assert scene_1.common_info == scene_2.common_info
+    assert scene_1.key_light == scene_2.key_light
+
+    assert len(scene_1.objects) == len(scene_2.objects)
+    for k in scene_1.objects:
+        assert scene_1.objects[k]["type"] == scene_2.objects[k]["type"]
+
+
+@pytest.mark.parametrize("scene_file", HC_SCENE_FILES)
+def test_save_honeycome_scene_encrypted_to_dict(scene_file, data_dir, hc_crypto):
+    key, iv = hc_crypto
+    scene = HoneycomeSceneData.load(data_dir / scene_file, decryption_key=key, decryption_iv=iv)
+    d = scene.to_dict()
+
+    assert d["scene_summary"] is not None
+    assert d["scene_summary"]["chara_num"] == scene.scene_summary["chara_num"]
+    assert d["map_info"] == scene.map_info
+    assert d["bgm"] == scene.bgm
+    assert d["common_info"] == scene.common_info
 
 
 # ============================================================
