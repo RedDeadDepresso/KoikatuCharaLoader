@@ -15,56 +15,66 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 
 class HoneycomeSceneData(SceneWalkMixin):
-    """Class for loading and parsing Honeycome scene data.
+    """Honeycome scene data loader/saver with full structured parsing.
 
-    This implementation focuses on loading objects (items and folders) only.
-    Supports both load and save operations.
+    Encrypted blocks are decrypted, Brotli-decompressed, and MemoryPack-parsed
+    into structured Python dicts. On save, the reverse pipeline is applied.
 
     Attributes:
         image: PNG image data.
         version: Scene version string.
-        dataVersion: Data format version string.
-        user_id: User ID string.
-        data_id: Data ID string.
-        title: Scene title.
+        user_id / data_id / title: Metadata strings.
         objects: Dictionary of scene objects keyed by object ID.
-        unknown_tail: Remaining unparsed data (lights, camera, etc.).
+        scene_summary: SceneSummary (CharaNum, ItemNum, Map, Titles).
+        map_info: MapInfo (No, ChangeAmount, Option, Light).
+        post_processing: PostProcessingInfo (13 sub-objects).
+        camera: CameraSaveData (Pos, Rotate, Distance, Parse).
+        camera_presets: CameraData[] (list of CameraSaveData).
+        chara_light: LightInfo (Color, Intensity, Rot).
+        key_light: KeyLightInfo (Enable, Color, Intensity, Shadow, ...).
+        bgm: BGMCtrl (Play, Loop, No, Title).
+        env_sound: ENVCtrl (Play, Loop, No, Title).
+        outside_sound: OutsideSoundCtrl (Play, Loop, File).
+        background: BackgroundInfo (DirectoryType, File).
+        common_info: SceneCommonInfo (ItemLamp, CharaScaleLimit).
     """
 
     def __init__(self) -> None:
-        """Initialize scene data with default values."""
         self.image: bytes | None = None
         self.version: str | None = None
         self.dataVersion: str | None = None
         self.user_id: str | None = None
         self.data_id: str | None = None
         self.title: str | None = None
-        self.unknown_1: int | None = None
-        self.unknown_2: bytes | None = None
+        self.language: int | None = None
         self.objects: dict[int, dict[str, Any]] = {}
-        self.unknown_tail: bytes = b""
-        self.unknown_tail_1: bytes | None = None
-        self.unknown_tail_2: bytes | None = None
-        self.unknown_tail_3: bytes | None = None
-        self.unknown_tail_4: bytes | None = None
-        self.unknown_tail_5: bytes | None = None
-        self.unknown_tail_6: bytes | None = None
-        self.unknown_tail_7: bytes | None = None
-        self.unknown_tail_8: bytes | None = None
-        self.unknown_tail_9: bytes | None = None
-        self.unknown_tail_10: bytes | None = None
         self.frame_filename: str | None = None
-        self.unknown_tail_11: bytes | None = None
         self.footer_marker: str | None = None
         self.unknown_tail_extra: bytes | None = None
         self.crypto_key: bytes | None = None
         self.crypto_iv: bytes | None = None
         self.original_filename: str | None = None
 
+        self.scene_summary: dict | None = None
+        self.map_info: dict | None = None
+        self.post_processing: dict | None = None
+        self.camera: dict | None = None
+        self.camera_presets: list[dict] | None = None
+        self.chara_light: dict | None = None
+        self.key_light: dict | None = None
+        self.bgm: dict | None = None
+        self.env_sound: dict | None = None
+        self.outside_sound: dict | None = None
+        self.background: dict | None = None
+        self.common_info: dict | None = None
+
+        # Raw encrypted blocks (kept for save without re-encryption)
+        self._raw_summary: bytes = b""
+        self._raw_blocks: list[bytes] = []
+
     @staticmethod
     @contextmanager
     def _temp_recursionlimit(limit: int):
-        # Context manager to raise recursion limit temporarily, then restore it.
         old = sys.getrecursionlimit()
         sys.setrecursionlimit(limit)
         try:
@@ -80,99 +90,107 @@ class HoneycomeSceneData(SceneWalkMixin):
         decryption_iv: bytes | None = None,
         recursion_limit: int = 5000,
     ) -> Self:
-        """
-        Load Honeycome scene data from a file or bytes.
-
-        Args:
-            filelike: Path to the file, bytes, or BytesIO object containing the scene data
-            decryption_key: AES key for decrypting unknown_tail blocks
-            decryption_iv: AES IV for decrypting unknown_tail blocks
-
-        Returns:
-            HoneycomeSceneData: The loaded scene data
-        """
+        """Load Honeycome scene data from a file or bytes."""
         hs = cls()
-        hs.crypto_key = None
-        hs.crypto_iv = None
+        hs.crypto_key = decryption_key
+        hs.crypto_iv = decryption_iv
         data_stream, hs.original_filename = to_stream(filelike)
 
-        # Read PNG image
         hs.image = get_png(data_stream)
 
-        # Read version string
         version_str = load_string(data_stream).decode("utf-8")
-
-        # Read Honeycome-specific header fields
         hs.user_id = load_string(data_stream).decode("utf-8")
         hs.data_id = load_string(data_stream).decode("utf-8")
         hs.title = load_string(data_stream).decode("utf-8")
 
-        # Read unknown fields
-        hs.unknown_1 = load_type(data_stream, "i")  # 1
-        hs.unknown_2 = data_stream.read(load_type(data_stream, "i"))
+        hs.language = load_type(data_stream, "i")
+        raw_summary = data_stream.read(load_type(data_stream, "i"))
 
         hs.version = version_str
         hs.dataVersion = version_str
 
-        # Read object dictionary
         obj_count = load_type(data_stream, "i")
         for _ in range(obj_count):
             key = load_type(data_stream, "i")
             obj_type = load_type(data_stream, "i")
-
-            # Create object info based on type
             obj_info = {"type": obj_type, "data": {}}
-
-            # Load object data based on type (only item and folder)
             try:
-                # Temporarily raise the recursion limit while loading nested objects.
-                # Some scenes exceed the default depth and should not crash the whole load.
                 with cls._temp_recursionlimit(recursion_limit):
                     HoneycomeSceneObjectLoader._dispatch_load(data_stream, obj_type, obj_info, version_str)
             except RecursionError as e:
-                raise RuntimeError(f"This scene is too deeply nested, so please increase `recursion_limit`. (object key={key} type={obj_type})") from e
-
+                raise RuntimeError(f"Scene too deeply nested, increase recursion_limit. (key={key} type={obj_type})") from e
             hs.objects[key] = obj_info
 
-        # Read remaining data as unknown_tail (lights, camera, etc.)
-        for idx in range(10):
+        raw_blocks = []
+        for _ in range(10):
             length = load_type(data_stream, "i")
-            block = data_stream.read(length)
-            setattr(hs, f"unknown_tail_{idx + 1}", block)
+            raw_blocks.append(data_stream.read(length))
 
-        # Read filename of frame
         hs.frame_filename = load_string(data_stream).decode("utf-8")
+        raw_blocks.append(data_stream.read(load_type(data_stream, "i")))
 
-        hs.unknown_tail_11 = data_stream.read(load_type(data_stream, "i"))
-
-        # 【DigitalCraft】
         hs.footer_marker = load_string(data_stream).decode("utf-8")
-
-        # this byte is basically zero-length, but may contain mod data.
         remaining = data_stream.read()
         hs.unknown_tail_extra = remaining or None
 
-        hs.crypto_key = decryption_key
-        hs.crypto_iv = decryption_iv
+        hs._raw_summary = raw_summary
+        hs._raw_blocks = raw_blocks
         if decryption_key and decryption_iv:
-            if len(decryption_key) != 16 or len(decryption_iv) != 16:
-                raise ValueError("Invalid decryption key or initialization vector.")
-
-            hs.unknown_2 = hs._decrypt_unknown(hs.unknown_2, decryption_key, decryption_iv)
-            for idx in range(11):
-                block = getattr(hs, f"unknown_tail_{idx + 1}") or b""
-                decrypted = hs._decrypt_unknown(block, decryption_key, decryption_iv)
-                setattr(hs, f"unknown_tail_{idx + 1}", decrypted)
+            hs._parse_blocks(raw_summary, raw_blocks)
 
         return hs
 
-    def save(self, filelike: str | io.BytesIO) -> None:
-        """
-        Save Honeycome scene data to a file or BytesIO object.
+    def _parse_blocks(self, raw_summary: bytes, raw_blocks: list[bytes]) -> None:
+        from kkloader.HoneycomeSceneBlocks import (
+            parse_background_info,
+            parse_bgm_ctrl,
+            parse_camera_data_array,
+            parse_camera_save_data,
+            parse_common_info,
+            parse_env_ctrl,
+            parse_key_light_info,
+            parse_light_info,
+            parse_map_info,
+            parse_outside_sound_ctrl,
+            parse_post_processing_info,
+            parse_scene_summary,
+        )
 
-        Args:
-            filelike: Path to the file or BytesIO object to save the scene data to
-        """
+        dec = self._decrypt_block(raw_summary)
+        self.scene_summary = parse_scene_summary(dec)
+
+        parsers = [
+            parse_map_info,
+            parse_post_processing_info,
+            parse_camera_save_data,
+            parse_camera_data_array,
+            parse_light_info,
+            parse_key_light_info,
+            parse_bgm_ctrl,
+            parse_env_ctrl,
+            parse_outside_sound_ctrl,
+            parse_background_info,
+            parse_common_info,
+        ]
+        attrs = [
+            "map_info",
+            "post_processing",
+            "camera",
+            "camera_presets",
+            "chara_light",
+            "key_light",
+            "bgm",
+            "env_sound",
+            "outside_sound",
+            "background",
+            "common_info",
+        ]
+
+        for parser, attr, raw in zip(parsers, attrs, raw_blocks):
+            setattr(self, attr, parser(self._decrypt_block(raw)))
+
+    def save(self, filelike: str | io.BytesIO) -> None:
+        """Save Honeycome scene data to a file or BytesIO object."""
         if isinstance(filelike, str):
             with open(filelike, "bw") as f:
                 f.write(bytes(self))
@@ -182,93 +200,129 @@ class HoneycomeSceneData(SceneWalkMixin):
             raise ValueError(f"Unsupported output type: {type(filelike)}")
 
     def __bytes__(self) -> bytes:
-        """
-        Convert the scene data to bytes.
-
-        Returns:
-            bytes: The scene data as bytes
-        """
         data_stream = io.BytesIO()
 
-        # Write PNG data if available
         if self.image:
             data_stream.write(self.image)
 
-        # Write version string
         version_bytes = self.version.encode("utf-8")
         data_stream.write(struct.pack("b", len(version_bytes)))
         data_stream.write(version_bytes)
 
-        # Write Honeycome-specific header fields
         write_string(data_stream, self.user_id.encode("utf-8"))
         write_string(data_stream, self.data_id.encode("utf-8"))
         write_string(data_stream, self.title.encode("utf-8"))
 
-        # Write unknown fields
-        data_stream.write(struct.pack("i", self.unknown_1))
-        unknown_2 = self.unknown_2
-        if self.crypto_key is not None and self.crypto_iv is not None:
-            unknown_2 = self._encrypt_unknown(unknown_2)
-        data_stream.write(struct.pack("i", len(unknown_2)))
-        data_stream.write(unknown_2)
+        data_stream.write(struct.pack("i", self.language))
 
-        # Write object dictionary
-        data_stream.write(struct.pack("i", len(self.objects)))
-        for key, obj_info in self.objects.items():
-            data_stream.write(struct.pack("i", key))
-            data_stream.write(struct.pack("i", obj_info["type"]))
+        if self.crypto_key and self.crypto_iv:
+            from kkloader.HoneycomeSceneBlocks import (
+                serialize_background_info,
+                serialize_bgm_ctrl,
+                serialize_camera_data_array,
+                serialize_camera_save_data,
+                serialize_common_info,
+                serialize_env_ctrl,
+                serialize_key_light_info,
+                serialize_light_info,
+                serialize_map_info,
+                serialize_outside_sound_ctrl,
+                serialize_post_processing_info,
+                serialize_scene_summary,
+            )
 
-            # Save object data based on type
-            try:
+            self._write_encrypted_block(data_stream, serialize_scene_summary(self.scene_summary))
+
+            data_stream.write(struct.pack("i", len(self.objects)))
+            for key, obj_info in self.objects.items():
+                data_stream.write(struct.pack("i", key))
+                data_stream.write(struct.pack("i", obj_info["type"]))
                 HoneycomeSceneObjectLoader._dispatch_save(data_stream, obj_info, self.version)
-            except NotImplementedError as e:
-                raise NotImplementedError(f"Cannot save object of type {obj_info['type']}: {str(e)}")
 
-        # Write unknown_tail (lights, camera, etc.)
-        for idx in range(10):
-            block = getattr(self, f"unknown_tail_{idx + 1}") or b""
-            if self.crypto_key is not None and self.crypto_iv is not None:
-                block = self._encrypt_unknown(block)
-            length = len(block)
-            data_stream.write(struct.pack("i", length))
-            data_stream.write(block)
+            serializers = [
+                serialize_map_info,
+                serialize_post_processing_info,
+                serialize_camera_save_data,
+                serialize_camera_data_array,
+                serialize_light_info,
+                serialize_key_light_info,
+                serialize_bgm_ctrl,
+                serialize_env_ctrl,
+                serialize_outside_sound_ctrl,
+                serialize_background_info,
+            ]
+            block_attrs = [
+                "map_info",
+                "post_processing",
+                "camera",
+                "camera_presets",
+                "chara_light",
+                "key_light",
+                "bgm",
+                "env_sound",
+                "outside_sound",
+                "background",
+            ]
 
-        write_string(data_stream, (self.frame_filename or "").encode("utf-8"))
-        unknown_tail_11 = self.unknown_tail_11
-        if self.crypto_key is not None and self.crypto_iv is not None:
-            unknown_tail_11 = self._encrypt_unknown(unknown_tail_11)
-        data_stream.write(struct.pack("i", len(unknown_tail_11)))
-        data_stream.write(unknown_tail_11)
+            for serializer, attr in zip(serializers, block_attrs):
+                self._write_encrypted_block(data_stream, serializer(getattr(self, attr)))
+
+            write_string(data_stream, (self.frame_filename or "").encode("utf-8"))
+            self._write_encrypted_block(data_stream, serialize_common_info(self.common_info))
+        else:
+            self._write_raw_block(data_stream, self._raw_summary)
+
+            data_stream.write(struct.pack("i", len(self.objects)))
+            for key, obj_info in self.objects.items():
+                data_stream.write(struct.pack("i", key))
+                data_stream.write(struct.pack("i", obj_info["type"]))
+                HoneycomeSceneObjectLoader._dispatch_save(data_stream, obj_info, self.version)
+
+            for idx in range(10):
+                self._write_raw_block(data_stream, self._raw_blocks[idx])
+
+            write_string(data_stream, (self.frame_filename or "").encode("utf-8"))
+            self._write_raw_block(data_stream, self._raw_blocks[10])
+
         write_string(data_stream, self.footer_marker.encode("utf-8"))
-
         if self.unknown_tail_extra:
             data_stream.write(self.unknown_tail_extra)
 
         return data_stream.getvalue()
 
-    def _decrypt_unknown(self, data: bytes, decryption_key: bytes, decryption_iv: bytes) -> bytes:
-        decryptor = Cipher(algorithms.AES(decryption_key), modes.CBC(decryption_iv), backend=default_backend()).decryptor()
+    def _write_raw_block(self, stream: io.BytesIO, data: bytes) -> None:
+        stream.write(struct.pack("i", len(data)))
+        stream.write(data)
+
+    def _write_encrypted_block(self, stream: io.BytesIO, compressed: bytes) -> None:
+        encrypted = self._encrypt_block(compressed)
+        stream.write(struct.pack("i", len(encrypted)))
+        stream.write(encrypted)
+
+    def _decrypt_block(self, data: bytes) -> bytes:
+        decryptor = Cipher(algorithms.AES(self.crypto_key), modes.CBC(self.crypto_iv), backend=default_backend()).decryptor()
         return decryptor.update(data) + decryptor.finalize()
 
-    def _encrypt_unknown(self, data: bytes) -> bytes:
+    def _encrypt_block(self, data: bytes) -> bytes:
+        remainder = len(data) % 16
+        if remainder:
+            data += b"\x00" * (16 - remainder)
         encryptor = Cipher(algorithms.AES(self.crypto_key), modes.CBC(self.crypto_iv), backend=default_backend()).encryptor()
         return encryptor.update(data) + encryptor.finalize()
 
     def to_dict(self):
-        """Convert the scene data to a dictionary"""
         return {
             "version": self.version,
-            "dataVersion": self.dataVersion,
             "user_id": self.user_id,
             "data_id": self.data_id,
             "title": self.title,
             "objectCount": len(self.objects),
+            "scene_summary": self.scene_summary,
+            "map_info": self.map_info,
+            "camera": self.camera,
+            "bgm": self.bgm,
+            "common_info": self.common_info,
         }
 
-    def __str__(self):
-        """String representation of the scene data"""
-        return f"HoneycomeSceneData(version={self.version}, objects={len(self.objects)})"
-
     def __repr__(self):
-        """Return a concise debug representation of Honeycome scene data."""
-        return f"{self.__class__.__name__}(version={self.version!r}, title={self.title!r}, user_id={self.user_id!r}, data_id={self.data_id!r}, original_filename={self.original_filename!r}, footer_marker={self.footer_marker!r})"
+        return f"{self.__class__.__name__}(version={self.version!r}, title={self.title!r}, objects={len(self.objects)})"

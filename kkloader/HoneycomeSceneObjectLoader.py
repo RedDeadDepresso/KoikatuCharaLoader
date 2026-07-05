@@ -164,7 +164,10 @@ class HoneycomeSceneObjectLoader(SceneObjectLoaderBase):
             "scale": cls._load_vector3(data_stream),
         }
 
-        data["unknown"] = data_stream.read(14)
+        data_stream.read(5)  # i32 length (=3) + MemoryPack header (0x02)
+        data["foreground_eyebrow"] = {"now_state": load_type(data_stream, "b"), "old_state": load_type(data_stream, "b")}
+        data_stream.read(5)  # i32 length (=3) + MemoryPack header (0x02)
+        data["foreground_eyes"] = {"now_state": load_type(data_stream, "b"), "old_state": load_type(data_stream, "b")}
 
         data["enable_ik"] = bool(load_type(data_stream, "b"))
         data["active_ik"] = cls._load_bool_array(data_stream, 5)
@@ -358,7 +361,12 @@ class HoneycomeSceneObjectLoader(SceneObjectLoaderBase):
         cls._save_vector3(data_stream, lookAtTarget["rotation"])
         cls._save_vector3(data_stream, lookAtTarget["scale"])
 
-        data_stream.write(data["unknown"])
+        for fg_key in ("foreground_eyebrow", "foreground_eyes"):
+            fg = data[fg_key]
+            data_stream.write(struct.pack("i", 3))
+            data_stream.write(struct.pack("b", 0x02))
+            data_stream.write(struct.pack("b", fg["now_state"]))
+            data_stream.write(struct.pack("b", fg["old_state"]))
 
         data_stream.write(struct.pack("b", int(data["enable_ik"])))
         active_ik = data["active_ik"]

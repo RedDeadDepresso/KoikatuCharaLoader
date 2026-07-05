@@ -115,6 +115,9 @@ __pypackages__/
 # Ignore all directories under data/
 data/**/
 
+# crypto keys
+data/crypto.json
+
 # Celery stuff
 celerybeat-schedule
 celerybeat.pid
