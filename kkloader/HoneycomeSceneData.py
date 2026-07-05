@@ -231,6 +231,9 @@ class HoneycomeSceneData(SceneWalkMixin):
                 serialize_scene_summary,
             )
 
+            counts = self.count_object_types()
+            self.scene_summary["chara_num"] = counts.get("Character", 0)
+            self.scene_summary["item_num"] = counts.get("Item", 0)
             self._write_encrypted_block(data_stream, serialize_scene_summary(self.scene_summary))
 
             data_stream.write(struct.pack("i", len(self.objects)))
