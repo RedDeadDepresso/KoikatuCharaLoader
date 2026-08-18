@@ -38,12 +38,17 @@ That's it! :)
 
 - Supports saving and loading:
   - `KoikatuCharaData`
+  - `KoikatuCharaData.CoordinateEntry` (Koikatu / Koikatsu Sunshine coordinate data)
   - `KoikatuSceneData`
   - `EmocreCharaData`
+  - `EmocreCharaData.CoordinateEntry` (EmotionCreators coordinate data)
   - `HoneycomeCharaData`
+  - `HoneycomeCharaData.CoordinateEntry` (Honeycome coordinate data)
   - `SummerVacationCharaData`
+  - `SummerVacationCharaData.CoordinateEntry` (SummerVacationScramble coordinate data)
   - `SummerVacationSaveData`
   - `AicomiCharaData`
+  - `AicomiCharaData.CoordinateEntry` (Aicomi coordinate data)
   - `AicomiSaveData`
   - `AmanatsuCharaData`
   - `AmanatsuCharaData.CoordinateEntry` (AmanatsuLocation coordinate data)
@@ -168,6 +173,34 @@ k["Custom"]["body"]["shapeValueBody"][0] = 0.5
 k.save("./data/kk_chara_modified.png")  
 ```
 
+### Put a Coordinate File on a Character
+
+A coordinate file (`【KoiKatuClothes】`) holds exactly the same payload as one element of a character's `Coordinate` block, so it can be assigned as-is.
+
+```python
+from kkloader import KoikatuCharaData
+from kkloader.KoikatuCharaData import CoordinateEntry
+
+chara = KoikatuCharaData.load("./data/kk_chara.png")
+coordinate = CoordinateEntry.load("./data/kk_coordinate.png", contains_png=True)
+
+# 0=School01, 1=School02, 2=Gym, 3=Swim, 4=Club, 5=Plain, 6=Pajamas
+chara["Coordinate"].data[0] = coordinate.data
+chara.save("./data/kk_chara_modified.png")
+```
+
+The other way round, saving one outfit of a character as a coordinate file:
+
+```python
+coordinate = CoordinateEntry()
+coordinate.data = chara["Coordinate"].data[3]
+coordinate.coordinate_name = "coordinate name".encode()
+coordinate.image = chara.image
+coordinate.save("./data/exported_coordinate.png")
+```
+
+The same works for Honeycome, SummerVacationScramble, Aicomi and AmanatsuLocation with their own `CoordinateEntry` classes.
+
 ### Convert Character Cards from EmotionCreators to Koikatu
 
 [`ec_to_kk.py`](https://github.com/great-majority/KoikatuCharaLoader/blob/master/samples/ec_to_kk.py) in the sample directory might be helpful.
@@ -249,6 +282,28 @@ Example:
 uv run samples/kk_to_ec.py ./data/kk_chara.png ./data/converted.png
 uv run samples/ec_to_kk.py ./data/ec_chara.png ./data/converted.png
 ```
+
+### Apply a Coordinate File to a Character
+
+Overwrites one coordinate slot of a character card with a coordinate file.
+
+Koikatu (`--slot`: 0=School01, 1=School02, 2=Gym, 3=Swim, 4=Club, 5=Plain, 6=Pajamas):
+```
+uv run samples/apply_coordinate_kk.py <character card> <coordinate file> <output> [--slot N]
+```
+
+Honeycome (`--slot`: 0=Plain, 1=Roomwear, 2=Bathing):
+```
+uv run samples/apply_coordinate_hc.py <character card> <coordinate file> <output> [--slot N]
+```
+
+Example:
+```
+uv run samples/apply_coordinate_kk.py ./data/kk_chara.png ./data/kk_coordinate.png ./data/dressed.png --slot 3
+uv run samples/apply_coordinate_hc.py ./data/hc_chara.png ./data/hc_coordinate.png ./data/dressed.png
+```
+
+The Honeycome script warns when the coordinate's `sex` does not match the character's, since clothes ids are numbered per sex.
 
 ### Extract Character Data from a Koikatu Scene
 

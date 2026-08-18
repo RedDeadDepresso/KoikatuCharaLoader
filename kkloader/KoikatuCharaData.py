@@ -6,7 +6,19 @@ import json
 import struct
 from typing import Any, ClassVar, Self
 
-from kkloader.funcs import get_png, load_length, load_type, msg_pack, msg_pack_kkex, msg_unpack, read_lstinfo_blocks, to_stream, write_lstinfo_blocks
+from kkloader.funcs import (
+    get_png,
+    load_length,
+    load_string,
+    load_type,
+    msg_pack,
+    msg_pack_kkex,
+    msg_unpack,
+    read_lstinfo_blocks,
+    to_stream,
+    write_lstinfo_blocks,
+    write_string,
+)
 
 import lz4.block
 import msgpack
@@ -491,6 +503,206 @@ class Custom(BlockData):
         return serialized, self.name, self.version
 
 
+def unpack_coordinate(data: bytes, contains_makeup: bool = True) -> dict[str, Any]:
+    """Deserialize a single coordinate (outfit) payload.
+
+    Args:
+        data: Raw bytes of one coordinate.
+        contains_makeup: Whether the payload carries the makeup fields.
+            Koikatu coordinates do, EmotionCreators ones do not.
+
+    Returns:
+        Dictionary of clothes, accessory and optionally makeup data.
+    """
+    data_stream = io.BytesIO(data)
+    coordinate: dict[str, Any] = {
+        "clothes": msg_unpack(load_length(data_stream, "i")),
+        "accessory": msg_unpack(load_length(data_stream, "i")),
+    }
+    if contains_makeup:
+        coordinate["enableMakeup"] = bool(load_type(data_stream, "b"))
+        coordinate["makeup"] = msg_unpack(load_length(data_stream, "i"))
+    return coordinate
+
+
+def pack_coordinate(coordinate: dict[str, Any], contains_makeup: bool = True) -> bytes:
+    """Serialize a single coordinate (outfit) payload.
+
+    Args:
+        coordinate: Dictionary of clothes, accessory and optionally makeup data.
+        contains_makeup: Whether the makeup fields should be written.
+
+    Returns:
+        Binary representation of the coordinate.
+    """
+    pack = struct.Struct("i")
+    parts: list[bytes] = []
+
+    serialized, length = msg_pack(coordinate["clothes"])
+    parts.extend([pack.pack(length), serialized])
+
+    serialized, length = msg_pack(coordinate["accessory"])
+    parts.extend([pack.pack(length), serialized])
+
+    if contains_makeup:
+        parts.append(struct.pack("b", coordinate["enableMakeup"]))
+        serialized, length = msg_pack(coordinate["makeup"])
+        parts.extend([pack.pack(length), serialized])
+
+    return b"".join(parts)
+
+
+class CoordinateEntry:
+    """A standalone Koikatu coordinate (outfit) file.
+
+    Coordinate files carry their own header (【KoiKatuClothes】), version and
+    coordinate name, followed by the same payload that each element of a
+    character's `Coordinate` block holds.
+    """
+
+    default_product_no: ClassVar[int] = 100
+    default_header: ClassVar[bytes] = "【KoiKatuClothes】".encode()
+    default_version: ClassVar[bytes] = b"0.0.0"
+    contains_makeup: ClassVar[bool] = True
+
+    def __init__(self) -> None:
+        """Initialize an empty CoordinateEntry."""
+        self.image: bytes | None = None
+        self.product_no: int = self.default_product_no
+        self.header: bytes = self.default_header
+        self.version: bytes = self.default_version
+        self.coordinate_name: bytes = b""
+        self.data: dict[str, Any] | None = None
+        self.original_file_path: str | None = None
+
+    @classmethod
+    def load(cls, filelike: str | bytes | io.BytesIO, contains_png: bool = False) -> "CoordinateEntry":
+        """Load a coordinate file from a file, bytes, or BytesIO stream.
+
+        Args:
+            filelike: Path to a coordinate file, raw bytes, or BytesIO stream.
+            contains_png: Whether the input contains a PNG image header.
+
+        Returns:
+            A CoordinateEntry instance with loaded data.
+        """
+        entry = cls()
+        stream, entry.original_file_path = to_stream(filelike)
+
+        if contains_png:
+            entry.image = get_png(stream)
+
+        entry.product_no = load_type(stream, "i")
+        entry.header = load_string(stream)
+        entry.version = load_string(stream)
+        entry._load_extra_header(stream)
+        entry.coordinate_name = load_string(stream)
+        entry.data = entry._unpack_payload(load_length(stream, "i"))
+
+        return entry
+
+    def _unpack_payload(self, data: bytes) -> dict[str, Any]:
+        """Deserialize the coordinate payload that follows the header.
+
+        Args:
+            data: Raw bytes of the payload.
+
+        Returns:
+            Dictionary of the coordinate contents.
+        """
+        return unpack_coordinate(data, self.contains_makeup)
+
+    def _pack_payload(self) -> bytes:
+        """Serialize the coordinate payload that follows the header.
+
+        Returns:
+            Binary representation of the coordinate contents.
+        """
+        return pack_coordinate(self.data, self.contains_makeup)  # type: ignore[arg-type]
+
+    def _load_extra_header(self, stream: io.BytesIO) -> None:
+        """Read game-specific header fields placed after the version string.
+
+        Args:
+            stream: Binary stream positioned right after the version string.
+        """
+
+    def _make_extra_header(self, stream: io.BytesIO) -> None:
+        """Write game-specific header fields placed after the version string.
+
+        Args:
+            stream: Binary stream positioned right after the version string.
+        """
+
+    def save(self, filename: str) -> None:
+        """Save the coordinate to a file.
+
+        Args:
+            filename: Path to write the coordinate file.
+        """
+        with open(filename, "bw") as f:
+            if self.image is not None:
+                f.write(self.image)
+            f.write(bytes(self))
+
+    def __bytes__(self) -> bytes:
+        """Serialize the coordinate to bytes (without PNG image).
+
+        Returns:
+            Binary representation of the coordinate.
+        """
+        payload = self._pack_payload()
+
+        ipack = struct.Struct("i")
+        stream = io.BytesIO()
+        stream.write(ipack.pack(self.product_no))
+        write_string(stream, self.header)
+        write_string(stream, self.version)
+        self._make_extra_header(stream)
+        write_string(stream, self.coordinate_name)
+        stream.write(ipack.pack(len(payload)))
+        stream.write(payload)
+        return stream.getvalue()
+
+    def jsonalizable(self) -> dict[str, Any] | None:
+        """Return a JSON-serializable representation of the coordinate.
+
+        Returns:
+            Dictionary of clothes, accessory and optionally makeup data.
+        """
+        return self.data
+
+    def __getitem__(self, key: str) -> Any:
+        """Get an item from the coordinate data by key.
+
+        Args:
+            key: The key to look up in the data.
+
+        Returns:
+            The value associated with the key.
+        """
+        return self.data[key]  # type: ignore[index]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        """Set an item in the coordinate data by key.
+
+        Args:
+            key: The key to set in the data.
+            value: The value to assign.
+        """
+        self.data[key] = value  # type: ignore[index]
+
+    def __repr__(self) -> str:
+        """Return a string representation of the coordinate.
+
+        Returns:
+            The string representation.
+        """
+        return (
+            f"{type(self).__name__}(product_no={self.product_no}, header={self.header.decode('utf-8')!r}, version={self.version.decode('utf-8')!r}, coordinate_name={self.coordinate_name.decode('utf-8')!r}, original_file_path={self.original_file_path!r})"
+        )
+
+
 class Coordinate(BlockData):
     """Block data for character coordinate (outfit) information.
 
@@ -512,24 +724,11 @@ class Coordinate(BlockData):
             return
 
         if version == "0.0.0":
-            self.data: list[dict[str, Any]] | dict[str, Any] | None = []
-            for c in msg_unpack(data):
-                data_stream = io.BytesIO(c)
-                coord = {
-                    "clothes": msg_unpack(load_length(data_stream, "i")),
-                    "accessory": msg_unpack(load_length(data_stream, "i")),
-                    "enableMakeup": bool(load_type(data_stream, "b")),
-                    "makeup": msg_unpack(load_length(data_stream, "i")),
-                }
-                self.data.append(coord)
+            self.data: list[dict[str, Any]] | dict[str, Any] | None = [unpack_coordinate(c) for c in msg_unpack(data)]
 
         # EmotionCreators uses this version
         elif version == "0.0.1":
-            data_stream = io.BytesIO(data)
-            self.data = {
-                "clothes": msg_unpack(load_length(data_stream, "i")),
-                "accessory": msg_unpack(load_length(data_stream, "i")),
-            }
+            self.data = unpack_coordinate(data, contains_makeup=False)
 
     def serialize(self) -> tuple[bytes, str, str]:
         """Serialize the coordinate data to bytes.
@@ -542,33 +741,10 @@ class Coordinate(BlockData):
         """
         serialized_all: bytes
         if self.version == "0.0.0":
-            data: list[bytes] = []
-            for i in self.data:  # type: ignore[union-attr]
-                c: list[bytes] = []
-                pack = struct.Struct("i")
-
-                serialized, length = msg_pack(i["clothes"])
-                c.extend([pack.pack(length), serialized])
-
-                serialized, length = msg_pack(i["accessory"])
-                c.extend([pack.pack(length), serialized])
-
-                c.append(struct.pack("b", i["enableMakeup"]))
-
-                serialized, length = msg_pack(i["makeup"])
-                c.extend([pack.pack(length), serialized])
-
-                data.append(b"".join(c))
-            serialized_all, _ = msg_pack(data)
+            serialized_all, _ = msg_pack([pack_coordinate(c) for c in self.data])  # type: ignore[union-attr]
 
         elif self.version == "0.0.1":
-            data_list: list[bytes] = []
-            pack = struct.Struct("i")
-            serialized, length = msg_pack(self.data["clothes"])  # type: ignore[index]
-            data_list.extend([pack.pack(length), serialized])
-            serialized, length = msg_pack(self.data["accessory"])  # type: ignore[index]
-            data_list.extend([pack.pack(length), serialized])
-            serialized_all = b"".join(data_list)
+            serialized_all = pack_coordinate(self.data, contains_makeup=False)  # type: ignore[arg-type]
 
         else:
             raise ValueError(f"Unsupported version: {self.version}")

@@ -5,6 +5,7 @@ import struct
 from typing import Any
 
 from kkloader.funcs import get_png, load_length, load_type
+from kkloader.KoikatuCharaData import CoordinateEntry as KoikatuCoordinateEntry
 from kkloader.KoikatuCharaData import KoikatuCharaData
 
 
@@ -99,3 +100,37 @@ class EmocreCharaData(KoikatuCharaData):
         if include_image and self.image:
             data["image"] = self.image
         return data
+
+
+class CoordinateEntry(KoikatuCoordinateEntry):
+    """A standalone EmotionCreators coordinate (outfit) file.
+
+    Uses the 【EroMakeClothes】 header, carries a language field after the
+    version string and has no makeup data.
+    """
+
+    default_product_no = 200
+    default_header = "【EroMakeClothes】".encode()
+    default_version = b"0.0.1"
+    contains_makeup = False
+
+    def __init__(self) -> None:
+        """Initialize an empty CoordinateEntry."""
+        super().__init__()
+        self.language: int = 0
+
+    def _load_extra_header(self, stream: io.BytesIO) -> None:
+        """Read the language field placed after the version string.
+
+        Args:
+            stream: Binary stream positioned right after the version string.
+        """
+        self.language = load_type(stream, "i")
+
+    def _make_extra_header(self, stream: io.BytesIO) -> None:
+        """Write the language field placed after the version string.
+
+        Args:
+            stream: Binary stream positioned right after the version string.
+        """
+        stream.write(struct.pack("i", self.language))

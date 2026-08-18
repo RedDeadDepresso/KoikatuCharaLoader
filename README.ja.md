@@ -36,12 +36,17 @@ KoikatuCharaData(product_no=100, header='【KoiKatuChara】', version='0.0.0', n
 
 - 読み込みと書き込み両方に対応
   - `KoikatuCharaData`
+  - `KoikatuCharaData.CoordinateEntry`（コイカツ / コイカツサンシャインのコーデ情報）
   - `KoikatuSceneData`
   - `EmocreCharaData`
+  - `EmocreCharaData.CoordinateEntry`（エモーションクリエイターズのコーデ情報）
   - `HoneycomeCharaData`
+  - `HoneycomeCharaData.CoordinateEntry`（ハニカムのコーデ情報）
   - `SummerVacationCharaData`
+  - `SummerVacationCharaData.CoordinateEntry`（サマすくのコーデ情報）
   - `SummerVacationSaveData`
   - `AicomiCharaData`
+  - `AicomiCharaData.CoordinateEntry`（あいこみのコーデ情報）
   - `AmanatsuCharaData`
   - `AmanatsuCharaData.CoordinateEntry`（甘夏ろけーしょんのコーデ情報）
   - `HoneycomeSceneData` (DigitalCraft全般に対応)
@@ -168,6 +173,34 @@ k["Custom"]["body"]["shapeValueBody"][0] = 0.5
 k.save("./data/kk_chara_modified.png")  
 ```
 
+### コーデデータをキャラに着せる
+
+コーデファイル(`【KoiKatuClothes】`)の中身は、キャラデータの `Coordinate` ブロックの1要素とまったく同じ形式なので、そのまま代入できます。
+
+```python
+from kkloader import KoikatuCharaData
+from kkloader.KoikatuCharaData import CoordinateEntry
+
+chara = KoikatuCharaData.load("./data/kk_chara.png")
+coordinate = CoordinateEntry.load("./data/kk_coordinate.png", contains_png=True)
+
+# 0=学校01, 1=学校02, 2=体操服, 3=水着, 4=部活, 5=私服, 6=パジャマ
+chara["Coordinate"].data[0] = coordinate.data
+chara.save("./data/kk_chara_modified.png")
+```
+
+逆に、キャラの着ているコーデをコーデファイルとして書き出すこともできます。
+
+```python
+coordinate = CoordinateEntry()
+coordinate.data = chara["Coordinate"].data[3]
+coordinate.coordinate_name = "コーデの名前".encode()
+coordinate.image = chara.image
+coordinate.save("./data/exported_coordinate.png")
+```
+
+ハニカム・サマすく・アイコミ・甘夏ろけーしょんでも、それぞれの `CoordinateEntry` で同じことができます。
+
 ### エモクリのキャラデータをコイカツのキャラデータに変換する
 
 sampleフォルダにある [`ec_to_kk.py`](https://github.com/great-majority/KoikatuCharaLoader/blob/master/samples/ec_to_kk.py) が参考になると思います。
@@ -249,6 +282,28 @@ uv run samples/ec_to_kk.py <入力ファイル> <出力ファイル>
 uv run samples/kk_to_ec.py ./data/kk_chara.png ./data/converted.png
 uv run samples/ec_to_kk.py ./data/ec_chara.png ./data/converted.png
 ```
+
+### コーデデータをキャラに着せる
+
+キャラデータのコーデスロットをコーデファイルの内容で上書きします。
+
+コイカツ (`--slot`: 0=学校01, 1=学校02, 2=体操服, 3=水着, 4=部活, 5=私服, 6=パジャマ):
+```
+uv run samples/apply_coordinate_kk.py <キャラデータ> <コーデデータ> <出力ファイル> [--slot N]
+```
+
+ハニカム (`--slot`: 0=通常, 1=部屋着, 2=風呂):
+```
+uv run samples/apply_coordinate_hc.py <キャラデータ> <コーデデータ> <出力ファイル> [--slot N]
+```
+
+例:
+```
+uv run samples/apply_coordinate_kk.py ./data/kk_chara.png ./data/kk_coordinate.png ./data/dressed.png --slot 3
+uv run samples/apply_coordinate_hc.py ./data/hc_chara.png ./data/hc_coordinate.png ./data/dressed.png
+```
+
+ハニカムは服のIDが性別ごとに振られているため、コーデデータの `sex` がキャラデータと食い違っている場合に警告を出します。
 
 ### コイカツシーンデータからキャラデータを抽出する
 

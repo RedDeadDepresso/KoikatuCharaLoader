@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from kkloader import (
@@ -11,8 +12,16 @@ from kkloader import (
     KoikatuCharaData,
     SummerVacationCharaData,
 )
+from kkloader.AicomiCharaData import CoordinateEntry as AicomiCoordinateEntry
 from kkloader.AmanatsuCharaData import CoordinateEntry
+from kkloader.EmocreCharaData import CoordinateEntry as EmocreCoordinateEntry
+from kkloader.HoneycomeCharaData import CoordinateEntry as HoneycomeCoordinateEntry
+from kkloader.HoneycomeCharaData import pack_coordinate as hc_pack_coordinate
+from kkloader.HoneycomeCharaData import unpack_coordinate as hc_unpack_coordinate
+from kkloader.KoikatuCharaData import CoordinateEntry as KoikatuCoordinateEntry
+from kkloader.KoikatuCharaData import pack_coordinate, unpack_coordinate
 from kkloader.KoikatuCharaHeader import KoikatuCharaHeader
+from kkloader.SummerVacationCharaData import CoordinateEntry as SummerVacationCoordinateEntry
 
 import pytest
 
@@ -301,6 +310,8 @@ def test_load_al_coordinate(data_dir):
     assert entry.image is not None
     assert entry.header == b"\xe3\x80\x90ALClothes\xe3\x80\x91"
     assert entry.product_no == 100
+    assert entry.sex == 1
+    assert entry.coordinate_name == b""
     assert entry.blockdata == ["Clothes", "Accessory", "Hair", "FaceMakeup", "BodyMakeup", "About"]
     assert entry.original_file_path.endswith("al_coordinate.png")
 
@@ -314,6 +325,136 @@ def test_save_al_coordinate(data_dir, tmp_path):
     with open(out_path, "rb") as f:
         saved_data = f.read()
     assert raw_data == saved_data
+
+
+KK_COORDINATE_FIELDS = ["clothes", "accessory", "enableMakeup", "makeup"]
+EC_COORDINATE_FIELDS = ["clothes", "accessory"]
+HC_COORDINATE_FIELDS = ["clothes", "accessory", "makeup", "hair", "nail"]
+
+
+@dataclass
+class CoordinateCase:
+    loader: type
+    filename: str
+    product_no: int
+    header: str
+    version: str
+    coordinate_name: str
+    fields: list[str]
+    clothes_parts: int
+    accessory_parts: int
+
+
+COORDINATE_CASES = [
+    CoordinateCase(KoikatuCoordinateEntry, "kk_coordinate.png", 100, "【KoiKatuClothes】", "0.0.0", "hrt", KK_COORDINATE_FIELDS, 9, 20),
+    CoordinateCase(KoikatuCoordinateEntry, "kks_coordinate.png", 100, "【KoiKatuClothes】", "0.0.0", "uivt", KK_COORDINATE_FIELDS, 9, 20),
+    CoordinateCase(EmocreCoordinateEntry, "ec_coordinate.png", 200, "【EroMakeClothes】", "0.0.1", "seifuku", EC_COORDINATE_FIELDS, 8, 20),
+    CoordinateCase(HoneycomeCoordinateEntry, "hc_coordinate.png", 200, "【HCClothes】", "0.0.0", "sasa", HC_COORDINATE_FIELDS, 8, 20),
+    CoordinateCase(SummerVacationCoordinateEntry, "svs_coordinate.png", 100, "【SVClothes】", "0.0.0", "", HC_COORDINATE_FIELDS, 8, 20),
+    CoordinateCase(AicomiCoordinateEntry, "ac_coordinate.png", 100, "【ACClothes】", "0.0.0", "", HC_COORDINATE_FIELDS, 8, 40),
+]
+
+
+@pytest.mark.parametrize("case", COORDINATE_CASES, ids=[c.filename.split("_")[0] for c in COORDINATE_CASES])
+class TestCoordinateEntry:
+    def test_load_header(self, case, data_dir):
+        entry = case.loader.load(data_dir / case.filename, contains_png=True)
+        assert entry.image is not None
+        assert entry.product_no == case.product_no
+        assert entry.header == case.header.encode()
+        assert entry.version == case.version.encode()
+        assert entry.coordinate_name == case.coordinate_name.encode()
+        assert entry.original_file_path.endswith(case.filename)
+
+    def test_load_payload(self, case, data_dir):
+        entry = case.loader.load(data_dir / case.filename, contains_png=True)
+        assert list(entry.data.keys()) == case.fields
+        assert len(entry["clothes"]["parts"]) == case.clothes_parts
+        assert len(entry["clothes"]["subPartsId"]) == 3
+        assert len(entry["clothes"]["parts"][0]["colorInfo"]) == 4
+        assert len(entry["accessory"]["parts"]) == case.accessory_parts
+
+    def test_save_is_byte_identical(self, case, data_dir, tmp_path):
+        with open(data_dir / case.filename, "rb") as f:
+            raw_data = f.read()
+        entry = case.loader.load(data_dir / case.filename, contains_png=True)
+        out_path = tmp_path / case.filename
+        entry.save(str(out_path))
+        with open(out_path, "rb") as f:
+            saved_data = f.read()
+        assert raw_data == saved_data
+
+    def test_load_from_bytes(self, case, data_dir):
+        with open(data_dir / case.filename, "rb") as f:
+            raw_data = f.read()
+        entry = case.loader.load(raw_data, contains_png=True)
+        assert entry.original_file_path is None
+        assert entry.image is not None
+        assert entry.image + bytes(entry) == raw_data
+
+    def test_reload_serialized_payload(self, case, data_dir):
+        entry = case.loader.load(data_dir / case.filename, contains_png=True)
+        reloaded = case.loader.load(bytes(entry))
+        assert reloaded.image is None
+        assert reloaded.product_no == entry.product_no
+        assert reloaded.header == entry.header
+        assert reloaded.coordinate_name == entry.coordinate_name
+        assert reloaded.data == entry.data
+
+
+def test_ec_coordinate_language(data_dir):
+    entry = EmocreCoordinateEntry.load(data_dir / "ec_coordinate.png", contains_png=True)
+    assert entry.language == 0
+    entry.language = 1
+    assert EmocreCoordinateEntry.load(bytes(entry)).language == 1
+
+
+@pytest.mark.parametrize(
+    "loader, filename",
+    [
+        (HoneycomeCoordinateEntry, "hc_coordinate.png"),
+        (SummerVacationCoordinateEntry, "svs_coordinate.png"),
+        (AicomiCoordinateEntry, "ac_coordinate.png"),
+    ],
+    ids=["hc", "svs", "ac"],
+)
+def test_hc_coordinate_sex(loader, filename, data_dir):
+    entry = loader.load(data_dir / filename, contains_png=True)
+    assert entry.sex == 1
+    entry.sex = 0
+    assert loader.load(bytes(entry)).sex == 0
+
+
+COORDINATE_BLOCK_CASES = [
+    (KoikatuCharaData, "kk_chara.png", KoikatuCoordinateEntry, "kk_coordinate.png"),
+    (HoneycomeCharaData, "hc_chara.png", HoneycomeCoordinateEntry, "hc_coordinate.png"),
+    (SummerVacationCharaData, "sv_chara.png", SummerVacationCoordinateEntry, "svs_coordinate.png"),
+    (AicomiCharaData, "ac_chara.png", AicomiCoordinateEntry, "ac_coordinate.png"),
+]
+
+
+@pytest.mark.parametrize("chara_loader, chara_file, entry_loader, entry_file", COORDINATE_BLOCK_CASES, ids=["kk", "hc", "sv", "ac"])
+def test_coordinate_payload_matches_character_block(chara_loader, chara_file, entry_loader, entry_file, data_dir):
+    chara = chara_loader.load(data_dir / chara_file)
+    entry = entry_loader.load(data_dir / entry_file, contains_png=True)
+    assert list(entry.data.keys()) == list(chara["Coordinate"].data[0].keys())
+
+
+@pytest.mark.parametrize("contains_makeup", [True, False], ids=["with_makeup", "without_makeup"])
+def test_pack_unpack_coordinate_roundtrip(contains_makeup, data_dir):
+    entry = KoikatuCoordinateEntry.load(data_dir / "kk_coordinate.png", contains_png=True)
+    coordinate = dict(entry.data)
+    if not contains_makeup:
+        del coordinate["enableMakeup"]
+        del coordinate["makeup"]
+    packed = pack_coordinate(coordinate, contains_makeup)
+    assert unpack_coordinate(packed, contains_makeup) == coordinate
+
+
+def test_pack_unpack_hc_coordinate_roundtrip(data_dir):
+    entry = HoneycomeCoordinateEntry.load(data_dir / "hc_coordinate.png", contains_png=True)
+    packed = hc_pack_coordinate(entry.data, HC_COORDINATE_FIELDS)
+    assert hc_unpack_coordinate(packed, HC_COORDINATE_FIELDS) == entry.data
 
 
 def test_load_chara_header(data_dir):

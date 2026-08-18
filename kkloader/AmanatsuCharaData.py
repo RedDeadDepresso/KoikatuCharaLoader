@@ -5,7 +5,17 @@ import struct
 from functools import partial
 from typing import Any
 
-from kkloader.funcs import get_png, load_length, load_type, msg_pack, msg_unpack, read_lstinfo_blocks, to_stream, write_lstinfo_blocks
+from kkloader.funcs import (
+    get_png,
+    load_string,
+    load_type,
+    msg_pack,
+    msg_unpack,
+    read_lstinfo_blocks,
+    to_stream,
+    write_lstinfo_blocks,
+    write_string,
+)
 from kkloader.HoneycomeCharaData import Custom, Graphic
 from kkloader.KoikatuCharaData import About, BlockData, KoikatuCharaData, Parameter, Status
 
@@ -23,8 +33,11 @@ class AmanatsuCharaData(KoikatuCharaData):
 class CoordinateEntry:
     """A single coordinate (outfit) entry with nested lstInfo block structure.
 
-    Each entry has its own header (【ALClothes】), version, and sub-blocks
-    (Clothes, Accessory, Hair, FaceMakeup, BodyMakeup, About).
+    Each entry has its own header (【ALClothes】), version, the sex the outfit
+    belongs to, a coordinate name, and sub-blocks (Clothes, Accessory, Hair,
+    FaceMakeup, BodyMakeup, About).
+
+    The field names follow `Character.HumanDataCoordinate` in the game binary.
     """
 
     def __init__(self) -> None:
@@ -33,7 +46,8 @@ class CoordinateEntry:
         self.product_no: int = 0
         self.header: bytes = b""
         self.version: bytes = b""
-        self.unknown: bytes = b"\x00\x00"
+        self.sex: int = 0
+        self.coordinate_name: bytes = b""
         self.blockdata: list[str] = []
         self.original_file_path: str | None = None
         self.original_lstinfo_order: list[str] = []
@@ -57,9 +71,10 @@ class CoordinateEntry:
             entry.image = get_png(stream)
 
         entry.product_no = load_type(stream, "i")
-        entry.header = load_length(stream, "b")
-        entry.version = load_length(stream, "b")
-        entry.unknown = stream.read(2)
+        entry.header = load_string(stream)
+        entry.version = load_string(stream)
+        entry.sex = load_type(stream, "B")
+        entry.coordinate_name = load_string(stream)
 
         raw_payload, entries, entry.original_lstinfo_order, entry.serialized_lstinfo_order = read_lstinfo_blocks(stream)
 
@@ -91,17 +106,14 @@ class CoordinateEntry:
         """
         lstinfo_bytes = write_lstinfo_blocks(self, self.serialized_lstinfo_order, self.original_lstinfo_order)
 
-        bpack = struct.Struct("b")
-        parts = [
-            struct.Struct("i").pack(self.product_no),
-            bpack.pack(len(self.header)),
-            self.header,
-            bpack.pack(len(self.version)),
-            self.version,
-            self.unknown,
-            lstinfo_bytes,
-        ]
-        return b"".join(parts)
+        stream = io.BytesIO()
+        stream.write(struct.Struct("i").pack(self.product_no))
+        write_string(stream, self.header)
+        write_string(stream, self.version)
+        stream.write(struct.pack("B", self.sex))
+        write_string(stream, self.coordinate_name)
+        stream.write(lstinfo_bytes)
+        return stream.getvalue()
 
     def jsonalizable(self) -> dict[str, Any]:
         """Return a JSON-serializable representation of the coordinate entry.
