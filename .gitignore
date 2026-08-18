@@ -114,6 +114,10 @@ __pypackages__/
 
 # Ignore all directories under data/
 data/**/
+!data/chara/
+!data/coordinate/
+!data/savedata/
+!data/scene/
 
 # crypto keys
 data/crypto.json

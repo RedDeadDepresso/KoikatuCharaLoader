@@ -4,10 +4,10 @@ from kkloader.MemoryPack import MpReader, MpWriter, read_version
 import pytest
 
 
-def test_savedata_vanilla(data_dir, tmp_path):
-    with open(data_dir / "kk_savedata.dat", "rb") as f:
+def test_savedata_vanilla(savedata_dir, tmp_path):
+    with open(savedata_dir / "kk_savedata.dat", "rb") as f:
         raw_data = f.read()
-    ks = KoikatuSaveData.load(data_dir / "kk_savedata.dat")
+    ks = KoikatuSaveData.load(savedata_dir / "kk_savedata.dat")
     out_path = tmp_path / "kk_savedata.dat"
     ks.save(str(out_path))
     ks2 = KoikatuSaveData.load(str(out_path))
@@ -15,10 +15,10 @@ def test_savedata_vanilla(data_dir, tmp_path):
     assert bytes(ks) == bytes(ks2)
 
 
-def test_summervacation_savedata(data_dir, tmp_path):
-    with open(data_dir / "sv_savedata.dat", "rb") as f:
+def test_summervacation_savedata(savedata_dir, tmp_path):
+    with open(savedata_dir / "sv_savedata.dat", "rb") as f:
         raw_data = f.read()
-    svsd = SummerVacationSaveData.load(data_dir / "sv_savedata.dat")
+    svsd = SummerVacationSaveData.load(savedata_dir / "sv_savedata.dat")
     out_path = tmp_path / "sv_savedata.dat"
     svsd.save(str(out_path))
     svsd2 = SummerVacationSaveData.load(str(out_path))
@@ -33,8 +33,8 @@ def test_savedata_load_invalid_type():
         KoikatuSaveData.load(123)
 
 
-def test_aicomi_savedata(data_dir, tmp_path):
-    save_path = data_dir / "ac_savedata.dat"
+def test_aicomi_savedata(savedata_dir, tmp_path):
+    save_path = savedata_dir / "ac_savedata.dat"
     with open(save_path, "rb") as f:
         raw_data = f.read()
     acs = AicomiSaveData.load(save_path)
@@ -53,8 +53,8 @@ def test_aicomi_savedata(data_dir, tmp_path):
     assert [unique["index"] for unique in acs.uniques] == [0, 1, 2]
 
 
-def test_aicomi_savedata_edit_chara(data_dir):
-    save_path = data_dir / "ac_savedata.dat"
+def test_aicomi_savedata_edit_chara(savedata_dir):
+    save_path = savedata_dir / "ac_savedata.dat"
     with open(save_path, "rb") as f:
         raw_data = f.read()
     acs = AicomiSaveData.load(save_path)
@@ -66,8 +66,8 @@ def test_aicomi_savedata_edit_chara(data_dir):
     assert reloaded.player["chara"]["Parameter"]["firstname"] == "検証太郎"
 
 
-def test_aicomi_savedata_edit_fields(data_dir):
-    save_path = data_dir / "ac_savedata.dat"
+def test_aicomi_savedata_edit_fields(savedata_dir):
+    save_path = savedata_dir / "ac_savedata.dat"
     with open(save_path, "rb") as f:
         raw_data = f.read()
     acs = AicomiSaveData.load(save_path)

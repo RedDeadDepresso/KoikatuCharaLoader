@@ -3,6 +3,7 @@
 from functools import partial
 
 from kkloader.HoneycomeCharaData import Coordinate, Custom, Graphic
+from kkloader.HoneycomeCharaData import CoordinateEntry as HoneycomeCoordinateEntry
 from kkloader.KoikatuCharaData import About, BlockData, KoikatuCharaData, Parameter, Status
 
 
@@ -14,6 +15,16 @@ class AicomiCharaData(KoikatuCharaData):
     """
 
     pass
+
+
+class CoordinateEntry(HoneycomeCoordinateEntry):
+    """A standalone Aicomi coordinate (outfit) file.
+
+    Same layout as the Honeycome one, with the 【ACClothes】 header.
+    """
+
+    default_product_no = 100
+    default_header = "【ACClothes】".encode()
 
 
 GameParameter_AC = partial(BlockData, name="GameParameter_AC")
