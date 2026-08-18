@@ -8,8 +8,23 @@ CRYPTO_PATH = DATA_DIR / "crypto.json"
 
 
 @pytest.fixture
-def data_dir():
-    return DATA_DIR
+def chara_dir():
+    return DATA_DIR / "chara"
+
+
+@pytest.fixture
+def coordinate_dir():
+    return DATA_DIR / "coordinate"
+
+
+@pytest.fixture
+def savedata_dir():
+    return DATA_DIR / "savedata"
+
+
+@pytest.fixture
+def scene_dir():
+    return DATA_DIR / "scene"
 
 
 @pytest.fixture

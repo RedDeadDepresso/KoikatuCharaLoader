@@ -24,9 +24,9 @@ If you just want to quickly try out this module, you can click the "Open In Cola
 ```python
 $ python
 >>> from kkloader import KoikatuCharaData # Import the module.
->>> kc = KoikatuCharaData.load("./data/kk_chara.png") # Load character data.
+>>> kc = KoikatuCharaData.load("./data/chara/kk_chara.png") # Load character data.
 >>> kc
-KoikatuCharaData(product_no=100, header='【KoiKatuChara】', version='0.0.0', name='白峰 一乃 ( かずのん )', blocks=['Custom', 'Coordinate', 'Parameter', 'Status'], has_kkex=False, original_file_path='/path/to/data/kk_chara.png')
+KoikatuCharaData(product_no=100, header='【KoiKatuChara】', version='0.0.0', name='白峰 一乃 ( かずのん )', blocks=['Custom', 'Coordinate', 'Parameter', 'Status'], has_kkex=False, original_file_path='/path/to/data/chara/kk_chara.png')
 >>> kc["Parameter"]["nickname"] # Print the character's nickname.
 'かずのん'
 >>> kc["Parameter"]["nickname"] = "chikarin" # Change the nickname.
@@ -124,7 +124,7 @@ kkloader automatically deserializes and reserializes such fields for known plugi
 ```
 from kkloader import KoikatuCharaData
 
-k = KoikatuCharaData.load("./data/kk_chara.png")
+k = KoikatuCharaData.load("./data/chara/kk_chara.png")
 k.save_json("data.json") 
 ```
 
@@ -157,7 +157,7 @@ If you add `include_image=True` to the `save_json` function's arguments, base64-
 ```python
 from kkloader import KoikatuCharaData
 
-k = KoikatuCharaData.load("./data/kk_chara.png")
+k = KoikatuCharaData.load("./data/chara/kk_chara.png")
 k["Parameter"]["lastname"] = "春野"
 k["Parameter"]["firstname"] = "千佳"
 k["Parameter"]["nickname"] = "ちかりん"
@@ -168,7 +168,7 @@ k.save("./data/kk_chara_modified")
 ```python
 from kkloader import KoikatuCharaData
 
-k = KoikatuCharaData.load("./data/kk_chara.png")
+k = KoikatuCharaData.load("./data/chara/kk_chara.png")
 k["Custom"]["body"]["shapeValueBody"][0] = 0.5
 k.save("./data/kk_chara_modified.png")  
 ```
@@ -181,8 +181,8 @@ A coordinate file (`【KoiKatuClothes】`) holds exactly the same payload as one
 from kkloader import KoikatuCharaData
 from kkloader.KoikatuCharaData import CoordinateEntry
 
-chara = KoikatuCharaData.load("./data/kk_chara.png")
-coordinate = CoordinateEntry.load("./data/kk_coordinate.png", contains_png=True)
+chara = KoikatuCharaData.load("./data/chara/kk_chara.png")
+coordinate = CoordinateEntry.load("./data/coordinate/kk_coordinate.png", contains_png=True)
 
 # 0=School01, 1=School02, 2=Gym, 3=Swim, 4=Club, 5=Plain, 6=Pajamas
 chara["Coordinate"].data[0] = coordinate.data
@@ -213,7 +213,7 @@ The `walk()` method recursively traverses all objects including nested children 
 ```python
 from kkloader import KoikatuSceneData
 
-scene = KoikatuSceneData.load("./data/kk_scene.png")
+scene = KoikatuSceneData.load("./data/scene/kk_scene.png")
 
 # Simple iteration over all objects
 for key, obj in scene.walk():
@@ -242,7 +242,7 @@ import copy
 from kkloader import KoikatuSceneData
 
 # Load scene data
-scene = KoikatuSceneData.load("./data/kk_scene.png")
+scene = KoikatuSceneData.load("./data/scene/kk_scene.png")
 
 # Iterate only character objects in the scene
 for _, obj_info in scene.walk(object_type=KoikatuSceneData.CHARACTER):
@@ -279,8 +279,8 @@ uv run samples/ec_to_kk.py <input> <output>
 
 Example:
 ```
-uv run samples/kk_to_ec.py ./data/kk_chara.png ./data/converted.png
-uv run samples/ec_to_kk.py ./data/ec_chara.png ./data/converted.png
+uv run samples/kk_to_ec.py ./data/chara/kk_chara.png ./data/converted.png
+uv run samples/ec_to_kk.py ./data/chara/ec_chara.png ./data/converted.png
 ```
 
 ### Apply a Coordinate File to a Character
@@ -299,8 +299,8 @@ uv run samples/apply_coordinate_hc.py <character card> <coordinate file> <output
 
 Example:
 ```
-uv run samples/apply_coordinate_kk.py ./data/kk_chara.png ./data/kk_coordinate.png ./data/dressed.png --slot 3
-uv run samples/apply_coordinate_hc.py ./data/hc_chara.png ./data/hc_coordinate.png ./data/dressed.png
+uv run samples/apply_coordinate_kk.py ./data/chara/kk_chara.png ./data/coordinate/kk_coordinate.png ./data/dressed.png --slot 3
+uv run samples/apply_coordinate_hc.py ./data/chara/hc_chara.png ./data/coordinate/hc_coordinate.png ./data/dressed.png
 ```
 
 The Honeycome script warns when the coordinate's `sex` does not match the character's, since clothes ids are numbered per sex.
@@ -314,7 +314,7 @@ uv run samples/salvage_character_from_scene.py <scene file> <output dir>
 
 Example:
 ```
-uv run samples/salvage_character_from_scene.py ./data/kk_scene.png ./data/
+uv run samples/salvage_character_from_scene.py ./data/scene/kk_scene.png ./data/
 ```
 
 # Contributing

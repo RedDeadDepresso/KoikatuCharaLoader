@@ -105,8 +105,8 @@ def test_get_png_length():
     assert get_png_length(png) == len(png)
 
 
-def test_get_png_from_real_file(data_dir):
-    with open(data_dir / "kk_chara.png", "rb") as f:
+def test_get_png_from_real_file(chara_dir):
+    with open(chara_dir / "kk_chara.png", "rb") as f:
         stream = io.BytesIO(f.read())
     png_data = get_png(stream)
     assert png_data[:8] == b"\x89PNG\r\n\x1a\n"

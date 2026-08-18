@@ -22,9 +22,9 @@ $ python -m pip install kkloader
 ```python
 $ python
 >>> from kkloader import KoikatuCharaData # モジュールを読み込む
->>> kc = KoikatuCharaData.load("./data/kk_chara.png") # キャラデータを読み込む
+>>> kc = KoikatuCharaData.load("./data/chara/kk_chara.png") # キャラデータを読み込む
 >>> kc
-KoikatuCharaData(product_no=100, header='【KoiKatuChara】', version='0.0.0', name='白峰 一乃 ( かずのん )', blocks=['Custom', 'Coordinate', 'Parameter', 'Status'], has_kkex=False, original_file_path='/path/to/data/kk_chara.png')
+KoikatuCharaData(product_no=100, header='【KoiKatuChara】', version='0.0.0', name='白峰 一乃 ( かずのん )', blocks=['Custom', 'Coordinate', 'Parameter', 'Status'], has_kkex=False, original_file_path='/path/to/data/chara/kk_chara.png')
 >>> kc["Parameter"]["nickname"] # ニックネームを表示する
 'かずのん'
 >>> kc["Parameter"]["nickname"] = "ちかりん" # ニックネームを"ちかりん"にする
@@ -124,7 +124,7 @@ CLI上では `prettify` メソッドを使えば、ブロックデータに含�
 ```
 from kkloader import KoikatuCharaData
 
-k = KoikatuCharaData.load("./data/kk_chara.png")
+k = KoikatuCharaData.load("./data/chara/kk_chara.png")
 k.save_json("data.json") 
 ```
 
@@ -157,7 +157,7 @@ k.save_json("data.json")
 ```python
 from kkloader import KoikatuCharaData
 
-k = KoikatuCharaData.load("./data/kk_chara.png")
+k = KoikatuCharaData.load("./data/chara/kk_chara.png")
 k["Parameter"]["lastname"] = "春野"
 k["Parameter"]["firstname"] = "千佳"
 k["Parameter"]["nickname"] = "ちかりん"
@@ -168,7 +168,7 @@ k.save("./data/kk_chara_modified")
 ```python
 from kkloader import KoikatuCharaData
 
-k = KoikatuCharaData.load("./data/kk_chara.png")
+k = KoikatuCharaData.load("./data/chara/kk_chara.png")
 k["Custom"]["body"]["shapeValueBody"][0] = 0.5
 k.save("./data/kk_chara_modified.png")  
 ```
@@ -181,8 +181,8 @@ k.save("./data/kk_chara_modified.png")
 from kkloader import KoikatuCharaData
 from kkloader.KoikatuCharaData import CoordinateEntry
 
-chara = KoikatuCharaData.load("./data/kk_chara.png")
-coordinate = CoordinateEntry.load("./data/kk_coordinate.png", contains_png=True)
+chara = KoikatuCharaData.load("./data/chara/kk_chara.png")
+coordinate = CoordinateEntry.load("./data/coordinate/kk_coordinate.png", contains_png=True)
 
 # 0=学校01, 1=学校02, 2=体操服, 3=水着, 4=部活, 5=私服, 6=パジャマ
 chara["Coordinate"].data[0] = coordinate.data
@@ -213,7 +213,7 @@ sampleフォルダにある [`ec_to_kk.py`](https://github.com/great-majority/Ko
 ```python
 from kkloader import KoikatuSceneData
 
-scene = KoikatuSceneData.load("./data/kk_scene.png")
+scene = KoikatuSceneData.load("./data/scene/kk_scene.png")
 
 # 全オブジェクトをシンプルに列挙
 for key, obj in scene.walk():
@@ -242,7 +242,7 @@ import copy
 from kkloader import KoikatuSceneData
 
 # シーンデータのロード
-scene = KoikatuSceneData.load("./data/kk_scene.png")
+scene = KoikatuSceneData.load("./data/scene/kk_scene.png")
 
 # シーンに含まれるキャラオブジェクトのみをイテレーションする
 for _, obj_info in scene.walk(object_type=KoikatuSceneData.CHARACTER):
@@ -279,8 +279,8 @@ uv run samples/ec_to_kk.py <入力ファイル> <出力ファイル>
 
 例:
 ```
-uv run samples/kk_to_ec.py ./data/kk_chara.png ./data/converted.png
-uv run samples/ec_to_kk.py ./data/ec_chara.png ./data/converted.png
+uv run samples/kk_to_ec.py ./data/chara/kk_chara.png ./data/converted.png
+uv run samples/ec_to_kk.py ./data/chara/ec_chara.png ./data/converted.png
 ```
 
 ### コーデデータをキャラに着せる
@@ -299,8 +299,8 @@ uv run samples/apply_coordinate_hc.py <キャラデータ> <コーデデータ> 
 
 例:
 ```
-uv run samples/apply_coordinate_kk.py ./data/kk_chara.png ./data/kk_coordinate.png ./data/dressed.png --slot 3
-uv run samples/apply_coordinate_hc.py ./data/hc_chara.png ./data/hc_coordinate.png ./data/dressed.png
+uv run samples/apply_coordinate_kk.py ./data/chara/kk_chara.png ./data/coordinate/kk_coordinate.png ./data/dressed.png --slot 3
+uv run samples/apply_coordinate_hc.py ./data/chara/hc_chara.png ./data/coordinate/hc_coordinate.png ./data/dressed.png
 ```
 
 ハニカムは服のIDが性別ごとに振られているため、コーデデータの `sex` がキャラデータと食い違っている場合に警告を出します。
@@ -314,7 +314,7 @@ uv run samples/salvage_character_from_scene.py <シーンファイル> <出力�
 
 例:
 ```
-uv run samples/salvage_character_from_scene.py ./data/kk_scene.png ./data/
+uv run samples/salvage_character_from_scene.py ./data/scene/kk_scene.png ./data/
 ```
 
 # 開発に参加する

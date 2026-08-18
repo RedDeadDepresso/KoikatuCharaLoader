@@ -11,9 +11,9 @@ import pytest
 # ============================================================
 
 
-def test_load_simple_scene(data_dir):
+def test_load_simple_scene(scene_dir):
     """Test loading a simple Koikatu scene file with one item"""
-    scene_data = KoikatuSceneData.load(data_dir / "kk_scene_simple.png")
+    scene_data = KoikatuSceneData.load(scene_dir / "kk_scene_simple.png")
 
     assert hasattr(scene_data, "version")
     assert hasattr(scene_data, "objects")
@@ -34,22 +34,22 @@ def test_load_simple_scene(data_dir):
     assert "panel" in obj_data
 
 
-def test_koikatu_scene_repr_fields(data_dir):
-    scene_data = KoikatuSceneData.load(data_dir / "kk_scene_simple.png")
+def test_koikatu_scene_repr_fields(scene_dir):
+    scene_data = KoikatuSceneData.load(scene_dir / "kk_scene_simple.png")
     repr_text = repr(scene_data)
     assert f"version={scene_data.version!r}" in repr_text
-    assert f"original_filename={str((data_dir / 'kk_scene_simple.png').resolve())!r}" in repr_text
+    assert f"original_filename={str((scene_dir / 'kk_scene_simple.png').resolve())!r}" in repr_text
     assert f"tail={scene_data.tail!r}" in repr_text
     assert "has_mod=False" in repr_text
 
 
-def test_koikatu_scene_repr_has_mod_for_mod_scene(data_dir):
-    scene_data = KoikatuSceneData.load(data_dir / "kk_scene_mod.png")
+def test_koikatu_scene_repr_has_mod_for_mod_scene(scene_dir):
+    scene_data = KoikatuSceneData.load(scene_dir / "kk_scene_mod.png")
     assert "has_mod=True" in repr(scene_data)
 
 
-def test_koikatu_scene_original_filename_for_bytes_input(data_dir):
-    with open(data_dir / "kk_scene_simple.png", "rb") as f:
+def test_koikatu_scene_original_filename_for_bytes_input(scene_dir):
+    with open(scene_dir / "kk_scene_simple.png", "rb") as f:
         raw_data = f.read()
     scene_data = KoikatuSceneData.load(raw_data)
     assert scene_data.original_filename is None
@@ -72,9 +72,9 @@ def count_types_recursive(objects):
     return type_counts
 
 
-def test_load_kk_scene(data_dir):
+def test_load_kk_scene(scene_dir):
     """Test loading kk_scene.png"""
-    scene_data = KoikatuSceneData.load(data_dir / "kk_scene.png")
+    scene_data = KoikatuSceneData.load(scene_dir / "kk_scene.png")
     assert scene_data.version == "1.0.4.2"
 
     type_counts = count_types_recursive(scene_data.objects)
@@ -83,9 +83,9 @@ def test_load_kk_scene(data_dir):
     assert type_counts.get(3, 0) == 19
 
 
-def test_load_kk_scene_mod(data_dir):
+def test_load_kk_scene_mod(scene_dir):
     """Test loading kk_scene_mod.png"""
-    scene_data = KoikatuSceneData.load(data_dir / "kk_scene_mod.png")
+    scene_data = KoikatuSceneData.load(scene_dir / "kk_scene_mod.png")
     assert scene_data.version == "1.1.2.1"
 
     type_counts = count_types_recursive(scene_data.objects)
@@ -95,9 +95,9 @@ def test_load_kk_scene_mod(data_dir):
     assert type_counts.get(3, 0) == 202
 
 
-def test_load_kks_scene(data_dir):
+def test_load_kks_scene(scene_dir):
     """Test loading kks_scene.png (Koikatsu Sunshine)"""
-    scene_data = KoikatuSceneData.load(data_dir / "kks_scene.png")
+    scene_data = KoikatuSceneData.load(scene_dir / "kks_scene.png")
     assert scene_data.version == "1.1.2.1"
 
     type_counts = count_types_recursive(scene_data.objects)
@@ -105,38 +105,38 @@ def test_load_kks_scene(data_dir):
     assert type_counts.get(3, 0) == 1
 
 
-def test_count_object_types_koikatu_scene(data_dir):
-    scene_data = KoikatuSceneData.load(data_dir / "kk_scene.png")
+def test_count_object_types_koikatu_scene(scene_dir):
+    scene_data = KoikatuSceneData.load(scene_dir / "kk_scene.png")
     assert scene_data.count_object_types() == {"Folder": 19, "Item": 169, "Character": 1}
 
 
-def test_count_object_types_koikatu_mod_scene(data_dir):
-    scene_data = KoikatuSceneData.load(data_dir / "kk_scene_mod.png")
+def test_count_object_types_koikatu_mod_scene(scene_dir):
+    scene_data = KoikatuSceneData.load(scene_dir / "kk_scene_mod.png")
     assert scene_data.count_object_types() == {"Folder": 202, "Item": 202, "Character": 1, "Light": 1}
 
 
-def test_count_object_types_kks_scene(data_dir):
-    scene_data = KoikatuSceneData.load(data_dir / "kks_scene.png")
+def test_count_object_types_kks_scene(scene_dir):
+    scene_data = KoikatuSceneData.load(scene_dir / "kks_scene.png")
     assert scene_data.count_object_types() == {"Light": 1, "Folder": 1, "Item": 3, "Character": 1}
 
 
-def test_walk_filter_object_type_koikatu(data_dir):
-    scene_data = KoikatuSceneData.load(data_dir / "kk_scene.png")
+def test_walk_filter_object_type_koikatu(scene_dir):
+    scene_data = KoikatuSceneData.load(scene_dir / "kk_scene.png")
     chars = list(scene_data.walk(object_type=KoikatuSceneData.CHARACTER))
     assert len(chars) == scene_data.count_object_types()["Character"]
     assert all(obj["type"] == KoikatuSceneData.CHARACTER for _, obj in chars)
 
 
-def test_walk_filter_object_type_koikatu_with_depth(data_dir):
-    scene_data = KoikatuSceneData.load(data_dir / "kks_scene.png")
+def test_walk_filter_object_type_koikatu_with_depth(scene_dir):
+    scene_data = KoikatuSceneData.load(scene_dir / "kks_scene.png")
     lights = list(scene_data.walk(include_depth=True, object_type=KoikatuSceneData.LIGHT))
     assert len(lights) == scene_data.count_object_types()["Light"]
     assert all(obj["type"] == KoikatuSceneData.LIGHT for _, obj, _ in lights)
 
 
-def test_scene_to_dict(data_dir):
+def test_scene_to_dict(scene_dir):
     """Test converting a scene to a dictionary"""
-    scene_data = KoikatuSceneData.load(data_dir / "kk_scene_simple.png")
+    scene_data = KoikatuSceneData.load(scene_dir / "kk_scene_simple.png")
     scene_dict = scene_data.to_dict()
 
     assert "version" in scene_dict
@@ -166,9 +166,9 @@ def count_all_objects(objects):
     return count
 
 
-def test_save_scene(data_dir):
+def test_save_scene(scene_dir):
     """Test saving a Koikatu scene file"""
-    scene_data = KoikatuSceneData.load(data_dir / "kk_scene_simple.png")
+    scene_data = KoikatuSceneData.load(scene_dir / "kk_scene_simple.png")
 
     tmpfile = tempfile.NamedTemporaryFile()
     scene_data.save(tmpfile.name)
@@ -211,9 +211,9 @@ def test_save_scene(data_dir):
     assert abs(scene_data.aceBlend - scene_data2.aceBlend) < 1e-6
 
 
-def test_save_complex_scene(data_dir):
+def test_save_complex_scene(scene_dir):
     """Test saving a complex Koikatu scene file with multiple object types"""
-    scene_data = KoikatuSceneData.load(data_dir / "kk_scene.png")
+    scene_data = KoikatuSceneData.load(scene_dir / "kk_scene.png")
 
     tmpfile = tempfile.NamedTemporaryFile()
     scene_data.save(tmpfile.name)
@@ -225,9 +225,9 @@ def test_save_complex_scene(data_dir):
     assert type_counts1 == type_counts2
 
 
-def test_save_kk_scene_mod(data_dir):
+def test_save_kk_scene_mod(scene_dir):
     """Test saving kk_scene_mod.png"""
-    scene_data = KoikatuSceneData.load(data_dir / "kk_scene_mod.png")
+    scene_data = KoikatuSceneData.load(scene_dir / "kk_scene_mod.png")
 
     tmpfile = tempfile.NamedTemporaryFile()
     scene_data.save(tmpfile.name)
@@ -239,9 +239,9 @@ def test_save_kk_scene_mod(data_dir):
     assert type_counts1 == type_counts2
 
 
-def test_save_kks_scene(data_dir):
+def test_save_kks_scene(scene_dir):
     """Test saving kks_scene.png (Koikatsu Sunshine)"""
-    scene_data = KoikatuSceneData.load(data_dir / "kks_scene.png")
+    scene_data = KoikatuSceneData.load(scene_dir / "kks_scene.png")
 
     tmpfile = tempfile.NamedTemporaryFile()
     scene_data.save(tmpfile.name)
@@ -258,8 +258,8 @@ def test_save_kks_scene(data_dir):
 # ============================================================
 
 
-def test_load_honeycome_scene_items(data_dir):
-    scene_data = HoneycomeSceneData.load(data_dir / "hc_scene_items.png")
+def test_load_honeycome_scene_items(scene_dir):
+    scene_data = HoneycomeSceneData.load(scene_dir / "hc_scene_items.png")
 
     assert hasattr(scene_data, "version")
     assert hasattr(scene_data, "objects")
@@ -273,8 +273,8 @@ def test_load_honeycome_scene_items(data_dir):
     assert has_folder, "Expected at least one folder object in hc_scene_items.png"
 
 
-def test_honeycome_scene_repr_fields(data_dir):
-    scene_data = HoneycomeSceneData.load(data_dir / "hc_scene_items.png")
+def test_honeycome_scene_repr_fields(scene_dir):
+    scene_data = HoneycomeSceneData.load(scene_dir / "hc_scene_items.png")
     repr_text = repr(scene_data)
 
     assert f"version={scene_data.version!r}" in repr_text
@@ -282,15 +282,15 @@ def test_honeycome_scene_repr_fields(data_dir):
     assert f"objects={len(scene_data.objects)}" in repr_text
 
 
-def test_honeycome_scene_original_filename_for_bytes_input(data_dir):
-    with open(data_dir / "hc_scene_items.png", "rb") as f:
+def test_honeycome_scene_original_filename_for_bytes_input(scene_dir):
+    with open(scene_dir / "hc_scene_items.png", "rb") as f:
         raw_data = f.read()
     scene_data = HoneycomeSceneData.load(raw_data)
     assert scene_data.original_filename is None
 
 
-def test_honeycome_scene_to_dict(data_dir):
-    scene_data = HoneycomeSceneData.load(data_dir / "hc_scene_items.png")
+def test_honeycome_scene_to_dict(scene_dir):
+    scene_data = HoneycomeSceneData.load(scene_dir / "hc_scene_items.png")
     scene_dict = scene_data.to_dict()
 
     assert "version" in scene_dict
@@ -302,8 +302,8 @@ def test_honeycome_scene_to_dict(data_dir):
     assert scene_dict["objectCount"] == len(scene_data.objects)
 
 
-def test_save_honeycome_scene_roundtrip(data_dir):
-    scene_data_1 = HoneycomeSceneData.load(data_dir / "hc_scene_items.png")
+def test_save_honeycome_scene_roundtrip(scene_dir):
+    scene_data_1 = HoneycomeSceneData.load(scene_dir / "hc_scene_items.png")
 
     output_stream = io.BytesIO()
     scene_data_1.save(output_stream)
@@ -354,11 +354,11 @@ def test_save_honeycome_scene_roundtrip(data_dir):
             assert len(data1.get("child", [])) == len(data2.get("child", [])), f"Folder {key} child count mismatch"
 
 
-def test_save_honeycome_scene_binary_exact(data_dir):
-    with open(data_dir / "hc_scene_items.png", "rb") as f:
+def test_save_honeycome_scene_binary_exact(scene_dir):
+    with open(scene_dir / "hc_scene_items.png", "rb") as f:
         original_bytes = f.read()
 
-    scene_data = HoneycomeSceneData.load(data_dir / "hc_scene_items.png")
+    scene_data = HoneycomeSceneData.load(scene_dir / "hc_scene_items.png")
 
     output_stream = io.BytesIO()
     scene_data.save(output_stream)
@@ -409,8 +409,8 @@ PRESERVATION_CASES = [
     [c[:5] for c in PRESERVATION_CASES],
     ids=[c[5] for c in PRESERVATION_CASES],
 )
-def test_object_data_preservation(scene_file, obj_type, nested, exact_fields, float_fields, data_dir, tmp_path):
-    scene_data = HoneycomeSceneData.load(data_dir / scene_file)
+def test_object_data_preservation(scene_file, obj_type, nested, exact_fields, float_fields, scene_dir, tmp_path):
+    scene_data = HoneycomeSceneData.load(scene_dir / scene_file)
 
     key, obj = _find_obj_by_type(scene_data, obj_type, nested=nested)
     assert obj is not None, f"Expected at least one object of type {obj_type} in {scene_file}"
@@ -470,8 +470,8 @@ def test_object_data_preservation(scene_file, obj_type, nested, exact_fields, fl
         assert "character" in data2
 
 
-def test_load_honeycome_scene_objects(data_dir):
-    scene_data = HoneycomeSceneData.load(data_dir / "hc_scene_objects.png")
+def test_load_honeycome_scene_objects(scene_dir):
+    scene_data = HoneycomeSceneData.load(scene_dir / "hc_scene_objects.png")
 
     assert hasattr(scene_data, "version")
     assert hasattr(scene_data, "objects")
@@ -487,13 +487,13 @@ def test_load_honeycome_scene_objects(data_dir):
     assert type_counts.get(4, 0) == 1, "Expected 1 route object"
 
 
-def test_count_object_types_honeycome_scene_items(data_dir):
-    scene_data = HoneycomeSceneData.load(data_dir / "hc_scene_items.png")
+def test_count_object_types_honeycome_scene_items(scene_dir):
+    scene_data = HoneycomeSceneData.load(scene_dir / "hc_scene_items.png")
     assert scene_data.count_object_types() == {"Folder": 76, "Item": 150}
 
 
-def test_count_object_types_honeycome_scene_objects(data_dir):
-    scene_data = HoneycomeSceneData.load(data_dir / "hc_scene_objects.png")
+def test_count_object_types_honeycome_scene_objects(scene_dir):
+    scene_data = HoneycomeSceneData.load(scene_dir / "hc_scene_objects.png")
     assert scene_data.count_object_types() == {
         "Folder": 8,
         "Item": 1,
@@ -504,15 +504,15 @@ def test_count_object_types_honeycome_scene_objects(data_dir):
     }
 
 
-def test_walk_filter_object_type_honeycome(data_dir):
-    scene_data = HoneycomeSceneData.load(data_dir / "hc_scene_objects.png")
+def test_walk_filter_object_type_honeycome(scene_dir):
+    scene_data = HoneycomeSceneData.load(scene_dir / "hc_scene_objects.png")
     folders = list(scene_data.walk(object_type=HoneycomeSceneData.FOLDER))
     assert len(folders) == scene_data.count_object_types()["Folder"]
     assert all(obj["type"] == HoneycomeSceneData.FOLDER for _, obj in folders)
 
 
-def test_walk_filter_object_type_honeycome_with_depth(data_dir):
-    scene_data = HoneycomeSceneData.load(data_dir / "hc_scene_objects.png")
+def test_walk_filter_object_type_honeycome_with_depth(scene_dir):
+    scene_data = HoneycomeSceneData.load(scene_dir / "hc_scene_objects.png")
     cameras = list(scene_data.walk(include_depth=True, object_type=HoneycomeSceneData.CAMERA))
     assert len(cameras) == scene_data.count_object_types()["Camera"]
     assert all(obj["type"] == HoneycomeSceneData.CAMERA for _, obj, _ in cameras)
@@ -526,9 +526,9 @@ HC_SCENE_FILES = ["hc_scene_items.png", "hc_scene_objects.png"]
 
 
 @pytest.mark.parametrize("scene_file", HC_SCENE_FILES)
-def test_load_honeycome_scene_decrypted_blocks(scene_file, data_dir, hc_crypto):
+def test_load_honeycome_scene_decrypted_blocks(scene_file, scene_dir, hc_crypto):
     key, iv = hc_crypto
-    scene = HoneycomeSceneData.load(data_dir / scene_file, decryption_key=key, decryption_iv=iv)
+    scene = HoneycomeSceneData.load(scene_dir / scene_file, decryption_key=key, decryption_iv=iv)
 
     assert scene.scene_summary is not None
     assert "chara_num" in scene.scene_summary
@@ -574,8 +574,8 @@ def test_load_honeycome_scene_decrypted_blocks(scene_file, data_dir, hc_crypto):
 
 
 @pytest.mark.parametrize("scene_file", HC_SCENE_FILES)
-def test_load_honeycome_scene_without_keys_leaves_blocks_none(scene_file, data_dir):
-    scene = HoneycomeSceneData.load(data_dir / scene_file)
+def test_load_honeycome_scene_without_keys_leaves_blocks_none(scene_file, scene_dir):
+    scene = HoneycomeSceneData.load(scene_dir / scene_file)
 
     assert scene.scene_summary is None
     assert scene.map_info is None
@@ -585,9 +585,9 @@ def test_load_honeycome_scene_without_keys_leaves_blocks_none(scene_file, data_d
 
 
 @pytest.mark.parametrize("scene_file", HC_SCENE_FILES)
-def test_save_honeycome_scene_encrypted_roundtrip(scene_file, data_dir, hc_crypto):
+def test_save_honeycome_scene_encrypted_roundtrip(scene_file, scene_dir, hc_crypto):
     key, iv = hc_crypto
-    scene_1 = HoneycomeSceneData.load(data_dir / scene_file, decryption_key=key, decryption_iv=iv)
+    scene_1 = HoneycomeSceneData.load(scene_dir / scene_file, decryption_key=key, decryption_iv=iv)
 
     buf = io.BytesIO()
     scene_1.save(buf)
@@ -611,9 +611,9 @@ def test_save_honeycome_scene_encrypted_roundtrip(scene_file, data_dir, hc_crypt
 
 
 @pytest.mark.parametrize("scene_file", HC_SCENE_FILES)
-def test_save_honeycome_scene_encrypted_to_dict(scene_file, data_dir, hc_crypto):
+def test_save_honeycome_scene_encrypted_to_dict(scene_file, scene_dir, hc_crypto):
     key, iv = hc_crypto
-    scene = HoneycomeSceneData.load(data_dir / scene_file, decryption_key=key, decryption_iv=iv)
+    scene = HoneycomeSceneData.load(scene_dir / scene_file, decryption_key=key, decryption_iv=iv)
     d = scene.to_dict()
 
     assert d["scene_summary"] is not None
@@ -624,12 +624,12 @@ def test_save_honeycome_scene_encrypted_to_dict(scene_file, data_dir, hc_crypto)
 
 
 @pytest.mark.parametrize("scene_file", HC_SCENE_FILES)
-def test_load_honeycome_scene_crypto_from_env(scene_file, data_dir, hc_crypto, monkeypatch):
+def test_load_honeycome_scene_crypto_from_env(scene_file, scene_dir, hc_crypto, monkeypatch):
     key, iv = hc_crypto
     monkeypatch.setenv("KKLOADER_CRYPTO_KEY", key.decode("utf-8"))
     monkeypatch.setenv("KKLOADER_CRYPTO_IV", iv.decode("utf-8"))
 
-    scene = HoneycomeSceneData.load(data_dir / scene_file)
+    scene = HoneycomeSceneData.load(scene_dir / scene_file)
 
     assert scene.scene_summary is not None
     assert isinstance(scene.scene_summary["chara_num"], int)
@@ -638,12 +638,12 @@ def test_load_honeycome_scene_crypto_from_env(scene_file, data_dir, hc_crypto, m
 
 
 @pytest.mark.parametrize("scene_file", HC_SCENE_FILES)
-def test_load_honeycome_scene_explicit_key_overrides_env(scene_file, data_dir, hc_crypto, monkeypatch):
+def test_load_honeycome_scene_explicit_key_overrides_env(scene_file, scene_dir, hc_crypto, monkeypatch):
     key, iv = hc_crypto
     monkeypatch.setenv("KKLOADER_CRYPTO_KEY", "wrong_key_1234567")
     monkeypatch.setenv("KKLOADER_CRYPTO_IV", "wrong_iv_1234567x")
 
-    scene = HoneycomeSceneData.load(data_dir / scene_file, decryption_key=key, decryption_iv=iv)
+    scene = HoneycomeSceneData.load(scene_dir / scene_file, decryption_key=key, decryption_iv=iv)
 
     assert scene.scene_summary is not None
     assert isinstance(scene.scene_summary["chara_num"], int)
@@ -654,8 +654,8 @@ def test_load_honeycome_scene_explicit_key_overrides_env(scene_file, data_dir, h
 # ============================================================
 
 
-def test_load_emocre_scene(data_dir):
-    scene = EmocreSceneData.load(data_dir / "ec_scene.png")
+def test_load_emocre_scene(scene_dir):
+    scene = EmocreSceneData.load(scene_dir / "ec_scene.png")
     assert scene.header == "【EroMakeHScene】"
     assert scene.product_no == 200
     assert len(scene.charas) > 0
@@ -665,10 +665,10 @@ def test_load_emocre_scene(data_dir):
     assert len(scene.node_graph.nodes) > 0
 
 
-def test_save_emocre_scene(data_dir):
-    with open(data_dir / "ec_scene.png", "rb") as f:
+def test_save_emocre_scene(scene_dir):
+    with open(scene_dir / "ec_scene.png", "rb") as f:
         raw_data = f.read()
-    scene = EmocreSceneData.load(data_dir / "ec_scene.png")
+    scene = EmocreSceneData.load(scene_dir / "ec_scene.png")
     tmpfile = tempfile.NamedTemporaryFile()
     scene.save(tmpfile.name)
     scene2 = EmocreSceneData.load(tmpfile.name)
