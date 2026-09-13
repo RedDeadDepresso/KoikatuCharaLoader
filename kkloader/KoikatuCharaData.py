@@ -861,7 +861,25 @@ class KKEx(BlockData):
             for keys in self.NESTED_KEYS:
                 if self._exists_path(self.data, keys):
                     k1, k2, k3 = keys
-                    self.data[k1][k2][k3] = msg_unpack(self.data[k1][k2][k3])
+                    nested = self.data[k1][k2][k3]
+                    # Some plugin versions (notably older KKABMPlugin builds)
+                    # store this field as a plain string (e.g. CSV bone data)
+                    # rather than a nested MessagePack blob. Trying to
+                    # msg_unpack() that either throws "a bytes-like object is
+                    # required" (str input) or, if naively re-encoded to
+                    # bytes, "ExtraData"/unpack errors, since it was never
+                    # MessagePack in the first place. Leave such fields as-is.
+                    if isinstance(nested, str):
+                        continue
+                    if not isinstance(nested, (bytes, bytearray)):
+                        continue
+                    try:
+                        self.data[k1][k2][k3] = msg_unpack(nested)
+                    except Exception:
+                        # Not actually nested MessagePack (or corrupt) —
+                        # keep the raw bytes rather than failing the whole
+                        # card load.
+                        continue
 
                     # Check if the data is an ExtType with code 99.
                     # This format is used for LZ4 compressed data.
@@ -885,6 +903,10 @@ class KKEx(BlockData):
             for keys in self.NESTED_KEYS:
                 if self._exists_path(data, keys):
                     k1, k2, k3 = keys
+                    if isinstance(data[k1][k2][k3], str):
+                        # Left untouched during load (see __init__) because it
+                        # wasn't actually nested MessagePack — don't re-pack it.
+                        continue
                     data[k1][k2][k3], msg_length = msg_pack(data[k1][k2][k3])
 
                     if self.LZ4_UNPACK and keys in self.LZ4_COMPRESSED_KEYS and msg_length > 64:
