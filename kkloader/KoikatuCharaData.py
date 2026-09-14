@@ -857,6 +857,10 @@ class KKEx(BlockData):
             version: The version string of this block.
         """
         super().__init__(name="KKEx", data=data, version=version)
+        # Paths from NESTED_KEYS whose value turned out not to be valid
+        # nested MessagePack (see below). serialize() consults this so it
+        # doesn't try to re-pack — and corrupt — those untouched values.
+        self._failed_nested_paths: set[tuple] = set()
         if self.NESTED_UNPACK:
             for keys in self.NESTED_KEYS:
                 if self._exists_path(self.data, keys):
@@ -870,15 +874,19 @@ class KKEx(BlockData):
                     # bytes, "ExtraData"/unpack errors, since it was never
                     # MessagePack in the first place. Leave such fields as-is.
                     if isinstance(nested, str):
+                        self._failed_nested_paths.add(tuple(keys))
                         continue
                     if not isinstance(nested, (bytes, bytearray)):
+                        self._failed_nested_paths.add(tuple(keys))
                         continue
                     try:
                         self.data[k1][k2][k3] = msg_unpack(nested)
                     except Exception:
                         # Not actually nested MessagePack (or corrupt) —
                         # keep the raw bytes rather than failing the whole
-                        # card load.
+                        # card load, and remember it so serialize() leaves
+                        # it alone too.
+                        self._failed_nested_paths.add(tuple(keys))
                         continue
 
                     # Check if the data is an ExtType with code 99.
@@ -903,7 +911,7 @@ class KKEx(BlockData):
             for keys in self.NESTED_KEYS:
                 if self._exists_path(data, keys):
                     k1, k2, k3 = keys
-                    if isinstance(data[k1][k2][k3], str):
+                    if tuple(keys) in self._failed_nested_paths:
                         # Left untouched during load (see __init__) because it
                         # wasn't actually nested MessagePack — don't re-pack it.
                         continue
